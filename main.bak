@@ -1,0 +1,109 @@
+#include "imu/imu.h"
+#include "motordriver/MotorDriver.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <math.h>
+#include "mraa.h"
+#include "pid.h"
+
+//#define DISABLE_MOTORS
+
+PID_t pitchPID;
+float pidP_P_GAIN,pidP_I_GAIN,pidP_D_GAIN,pidP_I_LIMIT,pidP_EMA_SAMPLES;
+float pitchPIDoutput = 0;
+
+// Define the signal handler
+void signal_callback_handler(int signum)
+{
+	printf("Exiting program; Caught signal %d\r\n",signum);
+
+	motor_driver_disable();
+
+	exit(signum);
+}
+
+int main(int argc, char **argv)
+{
+	// Register signal and signal handler
+	signal(SIGINT, signal_callback_handler);
+
+	printf("Eddie starting...\r\n");
+
+	imuinit();
+	printf("IMU Started.\r\n");
+
+#ifndef DISABLE_MOTORS
+	if ( motor_driver_enable() < 1 )
+		{
+			printf("Startup Failed; Error starting motor driver.\r\n");
+			motor_driver_disable();
+			return -1;
+		}
+	printf("Motor Driver Started.\r\n");
+#endif
+	
+	pidP_P_GAIN = PIDP_P_GAIN;	pidP_I_GAIN = PIDP_I_GAIN;	pidP_D_GAIN = PIDP_D_GAIN;	pidP_I_LIMIT = PID_I_LIMIT; pidP_EMA_SAMPLES = PIDP_EMA_SAMPLES;
+	PIDinit( &pitchPID, &pidP_P_GAIN, &pidP_I_GAIN, &pidP_D_GAIN, &pidP_I_LIMIT, &pidP_EMA_SAMPLES );
+	
+	getOrientation();
+	
+	float smoothPitch=-pitch;
+	int inStandbyState = 0;
+	while(1)
+	{
+		/*
+		//readSensors();
+		//printf("gx:%6.2f gy:%6.2f gz:%6.2f  ax:%6.2f ay:%6.2f az:%6.2f  mx:%6.2f my:%6.2f mz:%6.2f  temp:%0.0f\n",gx,gy,gz,ax,ay,az,mx,my,mz,temp);
+		*/
+		
+		getOrientation();
+		//printf("pitch: %6.2f     roll: %6.2f\n",pitch,roll);
+		
+		//Complementary filter example:	//angle = 0.98 *(angle+gyro*dt) + 0.02*accAngle
+		smoothPitch = 0.993 * ( smoothPitch+(gy*.01)) + 0.007*(-pitch);
+		
+		///printf("pitch: %6.2f smoothPitch: %6.2f ",pitch, -smoothPitch );
+		///printf("gy:%6.2f ax:%6.2f ",gy,ax*4);
+		
+		if ( fabs( smoothPitch ) > 30 && !inStandbyState)
+		{
+			//signal_callback_handler( 80085 );
+			motor_driver_standby(1);
+			inStandbyState = 1;
+			printf( "Help! I've fallen over and I can't get up =)\r\n");
+		} 
+		else if ( fabs( smoothPitch ) < 10 && inStandbyState )
+		{
+			motor_driver_standby(0);
+			inStandbyState = 0;
+		}
+		
+		if ( !inStandbyState )
+		{
+			//Eddie's balance point is -9.5 in the default configuration (;no head, cause he lost his mind;)
+			pitchPIDoutput = PIDUpdate( -9.5, -smoothPitch, 1 /*ms*/, &pitchPID);
+		}
+		else
+		{
+			pitchPID.accumulatedError = 0;
+		}
+		
+#ifndef DISABLE_MOTORS
+		set_motor_speed_right( pitchPIDoutput );
+		set_motor_speed_left( pitchPIDoutput );
+#endif
+		
+		///printf("PID Output: %0.2f\r\n", pitchPIDoutput );
+		
+		if ( !inStandbyState )
+		{
+			printf( "Pe: %0.2f Ie: %0.2f De: %0.2f\r\n", pitchPID.error, pitchPID.accumulatedError, pitchPID.differentialError );
+		}
+		
+		usleep(10000);
+
+	}
+	
+	return 0;
+}
