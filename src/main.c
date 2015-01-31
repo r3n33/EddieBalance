@@ -21,17 +21,16 @@
 //TODO: On camera webpage add buttons to control Eddie
 //TODO: Clean up clean up clean up.. as always
 
-//Eddie's balance point without head and with current IMU filtering is -8.7
-//Eddie's balance point with a $5 camera head and current IMU filtering is -3.2
-#define DEFAULT_TRIM -3.2f 
+#define DEFAULT_TRIM -4.0f //Eddie's balance point
 
-#define DEFAULT_FWD_TRIM -1.25f //Trim used to drive forwards
-#define DEFAULT_REV_TRIM 1.5f //Trim used to drive backwards
+#define DEFAULT_FWD_TRIM -3.0f //Trim used to drive forwards in motor speed %
+#define DEFAULT_REV_TRIM 3.0f //Trim used to drive backwards in motor speed %
 
-#define UDP_LISTEN_PORT 4242
+#define UDP_LISTEN_PORT 4242 //UDP Port for receiving commands
 
 int Running = 1;
-int inStandbyState = 0;
+int inFalloverState = 0; //Used to flag when Eddie has fallen over and disables motors
+int inSteadyState = 0; //Used to flag how long Eddie is being held upright in a stead state and will enable motors
 
 PID_t pitchPID;
 float pitchPIDoutput = 0;
@@ -164,6 +163,20 @@ void signal_callback_handler(int signum)
 					printf( "New PID D Gain Received: Changing %0.3f to %0.3f\r\n", pidP_D_GAIN, newGain );
 					pidP_D_GAIN = newGain;
 				}
+				else if ( strncmp( incomingUDP, "KALQ", 4 ) == 0 )
+				{
+					float newGain = 0;
+					newGain = atof( &incomingUDP[4] );
+					printf( "Setting Kalman QBias to: %0.2f\r\n", newGain );
+					setQbias( newGain );
+				}
+				else if ( strncmp( incomingUDP, "KALR", 4 ) == 0 )
+				{
+					float newGain = 0;
+					newGain = atof( &incomingUDP[4] );
+					printf( "Setting Kalman RMeasure to: %0.2f\r\n", newGain );
+					setRmeasure( newGain );
+				}
 				incomingUDP[ 0 ] = 0;
 			}
 		}
@@ -217,57 +230,53 @@ int main(int argc, char **argv)
 		
 		getOrientation(); //printf("i2cPitch: %6.2f i2cRoll: %6.2f\n",i2cPitch,i2cRoll);
 		
-		/*Complementary filter example:	//angle = 0.98 *(angle+gyro*dt) + 0.02*accAngle*/
-		filteredPitch = 0.993 * ( filteredPitch+(gy*.01)) + 0.007*(-i2cPitch); //0.993 is last known best with PID tune
-				
+		/*Complementary filter*/
+		filteredPitch = 0.993 * ( filteredPitch+(gy*.01)) + 0.007*(-i2cPitch);
+		/*Kalman filter*/	
 		kalmanAngle = -getkalmanangle(filteredPitch, gy, 0.01 /*dt*/);
 		
-		if ( fabs( filteredPitch ) > 30 && !inStandbyState)
+		if ( fabs( filteredPitch ) > 30 && !inFalloverState )
 		{
 			motor_driver_standby(1);
-			inStandbyState = 1;
+			inFalloverState = 1;
 			printf( "Help! I've fallen over and I can't get up =)\r\n");
 		} 
-		else if ( fabs( kalmanAngle ) < 10 && inStandbyState )
+		else if ( fabs( kalmanAngle ) < 10 && inFalloverState )
 		{
 			motor_driver_standby(0);
-			inStandbyState = 0;
+			inFalloverState = 0;
 			printf( "Thank you!\r\n" );
 		}
 		
-		if ( !inStandbyState )
+		if ( !inFalloverState )
 		{
-			switch( currentDriveMode )
-			{
-				case DRIVE_IDLE:
-					pitchPIDoutput = PIDUpdate( currentTrim, kalmanAngle, 1 /*ms*/, &pitchPID);
-				break;
-				case DRIVE_FORWARD:
-					pitchPIDoutput = PIDUpdate( currentTrim+driveForwardTrim, -filteredPitch, 1 /*ms*/, &pitchPID);
-				break;
-				case DRIVE_REVERSE:
-					pitchPIDoutput = PIDUpdate( currentTrim+driveReverseTrim, -filteredPitch, 1 /*ms*/, &pitchPID);
-				break;
-				default:
-					pitchPIDoutput = PIDUpdate( currentTrim, -filteredPitch, 1 /*ms*/, &pitchPID);
-				break;
-			}
+			pitchPIDoutput = PIDUpdate( currentTrim, kalmanAngle, 10 /*ms*/, &pitchPID);
 		}
 		else
 		{
 			pitchPID.accumulatedError = 0;
 		}
 		
+		switch( currentDriveMode )
+		{
+			case DRIVE_FORWARD:
+				pitchPIDoutput += driveForwardTrim;
+			break;
+			case DRIVE_REVERSE:
+				pitchPIDoutput += driveReverseTrim;
+			break;
+		}
+			
 #ifndef DISABLE_MOTORS
 		set_motor_speed_right( pitchPIDoutput );
 		set_motor_speed_left( pitchPIDoutput );
 #endif
 
-		if ( !inStandbyState )
+		if ( !inFalloverState )
 		{
-			//printf("PID Output: %0.2f\r\n", pitchPIDoutput );
-			//printf("i2cPitch: %6.2f filteredPitch: %6.2f kalman: %6.2f \r\n",i2cPitch, -filteredPitch, kalmanAngle );
-			//printf( "Pe: %0.2f Ie: %0.2f De: %0.2f\r\n", pitchPID.error, pitchPID.accumulatedError, pitchPID.differentialError );
+			printf( "PID Output: %0.2f\t", pitchPIDoutput );
+			printf( "filteredPitch: %6.2f kalman: %6.2f\t",i2cPitch, -filteredPitch, kalmanAngle );
+			printf( "Pe: %0.2f\tIe: %0.2f\tDe: %0.2f\r\n", pitchPID.error, pitchPID.accumulatedError, pitchPID.differentialError );
 		}
 		
 		usleep(10000);
