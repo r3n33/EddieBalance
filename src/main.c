@@ -228,7 +228,7 @@ int main(int argc, char **argv)
 			inStandbyState = 1;
 			printf( "Help! I've fallen over and I can't get up =)\r\n");
 		} 
-		else if ( fabs( filteredPitch ) < 10 && inStandbyState )
+		else if ( fabs( kalmanAngle ) < 10 && inStandbyState )
 		{
 			motor_driver_standby(0);
 			inStandbyState = 0;

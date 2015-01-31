@@ -3,7 +3,7 @@ Description=iotkit-agent
 After=network.target
 
 [Service]
-ExecStart=/home/root/EddieBalance/./main
+ExecStart=/home/root/EddieBalance/src/./EddieBalance
 Restart=always
 RestartSec=10s
 Environment=NODE_ENV=production
