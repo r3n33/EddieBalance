@@ -11,9 +11,9 @@
 #define PID_I_LIMIT  10.0 //Ilimit is before process gain
  
 //Pitch PID Configuration
-#define PIDP_P_GAIN 19.0f
-#define PIDP_I_GAIN 50.0f
-#define PIDP_D_GAIN 8.0f
+#define PIDP_P_GAIN 16.0f
+#define PIDP_I_GAIN 80.0f
+#define PIDP_D_GAIN 5.0f
 #define PIDP_EMA_SAMPLES 2.0f
 
 typedef struct
