@@ -14,15 +14,10 @@
 //#define DISABLE_MOTORS
 
 //TODO: Remove network reset at startup when Intel fixes the confirmed bug in GPIO
-//TODO: Fix Kalman.h since I harshly converted C++ class to C
 //TODO: Finish IMU complementary filter and Kalman filter tuning
-//TODO: Expand network command interface, currently using UDP to simplify the connection process
-//TODO: Enhance movement parameters, currently set desired angle +/- to move forward backward
 //TODO: Automatically detect camera and enable
-//TODO: On camera webpage add buttons to control Eddie
-//TODO: Clean up clean up clean up.. as always
 
-#define DEFAULT_TRIM -3.9f //Eddie's balance point
+#define DEFAULT_TRIM -5.9f //Eddie's balance point
 
 #define DEFAULT_FWD_TRIM -1.25f //Trim used to drive forwards by changing angular setpoint
 #define DEFAULT_REV_TRIM 1.25f //Trim used to drive backwards by changing angular setpoint
@@ -64,7 +59,7 @@ enum
 	CONSOLE=0,
 	UDP
 };
-int outputto = CONSOLE;
+int outputto = UDP;
 
 int print(const char *format, ...)
 {
@@ -218,7 +213,6 @@ int main(int argc, char **argv)
 	setkalmanangle( filteredPitch );
 	
 	
-	
 	float testMotionTrim=0;
 	float testTrimApplied = 0;
 	
@@ -267,25 +261,29 @@ int main(int argc, char **argv)
 		{
 			/* Testing adjusting setpoint when motor speeds exceed threshold
 			 * Working quite nicely as motion compensation
+			 * Now expanded to three thresholds with different rates. I'm sure there is a 'smarter' way
+			 * to handle this but for now I'll stick with what works.
 			 */
-			if ( pitchPIDoutput > 20.0 ) 
-			{
-				if ( testMotionTrim < 6 ) testMotionTrim += MOTION_COMPENSATE_RATE;
-			}
-			else if ( pitchPIDoutput < -20.0 )
-			{
-				if ( testMotionTrim > -6 ) testMotionTrim -= MOTION_COMPENSATE_RATE;
-			}
+			if      ( pitchPIDoutput >  60.0 && testMotionTrim <  4.0 ) testMotionTrim += MOTION_COMPENSATE_RATE*2;
+			else if ( pitchPIDoutput < -60.0 && testMotionTrim > -4.0 ) testMotionTrim -= MOTION_COMPENSATE_RATE*2;
+			
+			else if ( pitchPIDoutput >  40.0 && testMotionTrim <  3.0 ) testMotionTrim += MOTION_COMPENSATE_RATE*2;
+			else if ( pitchPIDoutput < -40.0 && testMotionTrim > -3.0 ) testMotionTrim -= MOTION_COMPENSATE_RATE*2;
+			
+			else if ( pitchPIDoutput >  25.0 && testMotionTrim <  1.5 ) testMotionTrim += MOTION_COMPENSATE_RATE;
+			else if ( pitchPIDoutput < -25.0 && testMotionTrim > -1.5 ) testMotionTrim -= MOTION_COMPENSATE_RATE;
+			
 			else if ( testMotionTrim > 0 ) testMotionTrim -= MOTION_COMPENSATE_RATE;
 			else if ( testMotionTrim < 0 ) testMotionTrim += MOTION_COMPENSATE_RATE;
 			
+			/* Testing drive operations */
 			switch( currentDriveMode )
 			{
 				case DRIVE_FORWARD:
-					testTrimApplied = testMotionTrim + driveForwardTrim;
+					testTrimApplied = driveForwardTrim + testMotionTrim;
 				break;
 				case DRIVE_REVERSE:
-					testTrimApplied = testMotionTrim + driveReverseTrim;
+					testTrimApplied = driveReverseTrim + testMotionTrim;
 				break;
 				case DRIVE_IDLE: default: //Bleed off applied trim ( or drive trim ) to match motion compensation trim
 					if ( testTrimApplied < testMotionTrim ) testTrimApplied += MOTION_COMPENSATE_RATE;
@@ -295,7 +293,7 @@ int main(int argc, char **argv)
 			
 			pitchPIDoutput = PIDUpdate( currentTrim+testTrimApplied, kalmanAngle, 10 /*ms*/, &pitchPID);
 		}
-		else
+		else //We are inFalloverState and the PID i term should remain 0
 		{
 			pitchPID.accumulatedError = 0;
 		}
