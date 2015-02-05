@@ -23,7 +23,7 @@
 #define DEFAULT_REV_TRIM 1.25f //Trim used to drive backwards by changing angular setpoint
 #define DEFAULT_TRN_TRIM 20.0f //Default trim for turning expressed in motor speed %
 
-#define MOTION_COMPENSATE_RATE 0.08
+#define MOTION_COMPENSATE_RATE 0.1
 
 #define UDP_LISTEN_PORT 4242 //UDP Port for receiving commands
 
@@ -177,6 +177,26 @@ void UDP_Data_Handler( char * p_udpin )
 	}	
 }
 
+void motion_comp( float p_speed, float * p_trim, float p_threshold, float p_maxAngle, float p_maxRate )
+{
+	float fabsSpeed = fabs(p_speed);
+	if ( fabsSpeed >  100.0 ) fabsSpeed =  100.0;
+	int sign = p_speed < 0 ? -1 : 1;
+	float compensationLimit = (p_maxAngle / 100.0) * fabsSpeed;
+	float compensationRate = (p_maxRate / 100.0) * fabsSpeed;
+	
+	if ( fabsSpeed < p_threshold )
+	{
+		if ( *p_trim > 0 ) *p_trim -= p_maxRate;
+		else if ( *p_trim < 0 ) *p_trim += p_maxRate;
+	}
+	else if ( fabs(*p_trim) < compensationLimit )
+	{
+		//printf( "Speed %0.2f Limit %0.2f Rate %0.2f Trim %0.2f\r\n", fabsSpeed, compensationLimit, compensationRate, *p_trim );
+		*p_trim += sign * compensationRate;
+	}
+}
+
 int main(int argc, char **argv)
 {
 	// Register signal and signal handler
@@ -261,21 +281,11 @@ int main(int argc, char **argv)
 		{
 			/* Testing adjusting setpoint when motor speeds exceed threshold
 			 * Working quite nicely as motion compensation
-			 * Now expanded to three thresholds with different rates. I'm sure there is a 'smarter' way
-			 * to handle this but for now I'll stick with what works.
+			 * Now made into a function with adjustable parameters.
+			 * If you are PID tuning for balance I would recommend commenting this function.
 			 */
-			if      ( pitchPIDoutput >  60.0 && testMotionTrim <  4.0 ) testMotionTrim += MOTION_COMPENSATE_RATE*2;
-			else if ( pitchPIDoutput < -60.0 && testMotionTrim > -4.0 ) testMotionTrim -= MOTION_COMPENSATE_RATE*2;
-			
-			else if ( pitchPIDoutput >  40.0 && testMotionTrim <  3.0 ) testMotionTrim += MOTION_COMPENSATE_RATE*2;
-			else if ( pitchPIDoutput < -40.0 && testMotionTrim > -3.0 ) testMotionTrim -= MOTION_COMPENSATE_RATE*2;
-			
-			else if ( pitchPIDoutput >  25.0 && testMotionTrim <  1.5 ) testMotionTrim += MOTION_COMPENSATE_RATE;
-			else if ( pitchPIDoutput < -25.0 && testMotionTrim > -1.5 ) testMotionTrim -= MOTION_COMPENSATE_RATE;
-			
-			else if ( testMotionTrim > 0 ) testMotionTrim -= MOTION_COMPENSATE_RATE;
-			else if ( testMotionTrim < 0 ) testMotionTrim += MOTION_COMPENSATE_RATE;
-			
+			motion_comp( pitchPIDoutput, &testMotionTrim, 20.0 /*threshold*/, 4.0 /*max angle*/, MOTION_COMPENSATE_RATE );
+		
 			/* Testing drive operations */
 			switch( currentDriveMode )
 			{
