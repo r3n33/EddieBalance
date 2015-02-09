@@ -52,7 +52,6 @@ calculateI( const double setpoint, const double dTmilliseconds, PID_t* pPID )
 	{
 		pPID->accumulatedError = -(*pPID->iLimit);
 	}
-
 }
 
 void
@@ -77,7 +76,9 @@ PIDUpdate( double setpoint, double actual_position, double dTmilliseconds, PID_t
 	double controllerOutput = 0;
 
 	calculateP(setpoint, actual_position, pPID);
-	calculateI(setpoint, dTmilliseconds, pPID);
+
+	if ( *pPID->integralTime == 0 ) pPID->accumulatedError = 0;
+	else calculateI(setpoint, dTmilliseconds, pPID);
 
 	if ( *pPID->derivateTime == 0 ) pPID->differentialError = 0;
 	else calculateD( actual_position, dTmilliseconds, pPID );

@@ -38,10 +38,13 @@ char readi2c(int address, int reg, int count)
 void readGyro()
 {
 	readi2c(GYRO_I2C_ADDR, OUT_X_L_G, 6); // Read 6 bytes, beginning at OUT_X_L_G
-	gx = (float)((short)(rx_tx_buf[1] << 8) | rx_tx_buf[0])*0.06103515625;//0.007476806640625; // Store x-axis values into gx
-	gy = (float)((short)(rx_tx_buf[3] << 8) | rx_tx_buf[2])*0.06103515625;//0.007476806640625; // Store y-axis values into gy
-	gz = (float)((short)(rx_tx_buf[5] << 8) | rx_tx_buf[4])*0.06103515625;//0.007476806640625; // Store z-axis values into gz
-	//TODO fix orientation
+	float tgx = (float)((short)(rx_tx_buf[1] << 8) | rx_tx_buf[0])*0.06103515625;//0.007476806640625; // Store x-axis values into gx
+	float tgy = (float)((short)(rx_tx_buf[3] << 8) | rx_tx_buf[2])*0.06103515625;//0.007476806640625; // Store y-axis values into gy
+	float tgz = (float)((short)(rx_tx_buf[5] << 8) | rx_tx_buf[4])*0.06103515625;//0.007476806640625; // Store z-axis values into gz
+	
+	gx = tgz;
+	gy = tgy;
+	gz = tgx;
 }
 
 void readAccel()
@@ -113,8 +116,8 @@ void getOrientation()
 //  i2cHeading = (float)atan2(mz * sin(i2cRoll) - my * cos(i2cRoll), mx * cos(i2cPitch) + my * sin(i2cPitch) * sin(i2cRoll) + mz * sin(i2cPitch) * cos(i2cRoll));
 
   // Convert angular data to degree 
-  i2cRoll 	= - i2cRoll * 180.0 / PI_F;
-  i2cPitch 	= - i2cPitch * 180.0 / PI_F;
+  i2cRoll 	 = - i2cRoll * 180.0 / PI_F;
+  i2cPitch 	 =   i2cPitch * 180.0 / PI_F;
   i2cHeading = - i2cHeading * 180.0 / PI_F;
 
 }
