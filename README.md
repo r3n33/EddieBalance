@@ -13,6 +13,8 @@ If you'd like to automatically run the Eddie software when your Edison turns on 
 
 See the src/ directory for a quick ./build script and execute with ./EddieBalance
 
-I am actively updating the code on this project and as I accomplish better stability and control I'll keep this updated.
+If you need help building your Eddie please contact me through thingiverse and I'll get an email back to you.
 
-If you need help building your Eddie please contact me through github or thingiverse and I'll get back to you.
+Please Note:
+
+I am actively updating the code on this project and as I accomplish better stability and control I'll keep this updated. I'm currently working towards eliminating the motion compensation I recently introduced; Tuning a 'setpoint' PID controller to command the pitch PID controller; Improved R/C commands; Better pitch and roll accuracy; Improved timing with measurements; iOS application; Windows GUI for configuration and tuning.
