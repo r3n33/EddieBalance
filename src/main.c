@@ -1,3 +1,21 @@
+/* 
+ Eddie the balance bot. Copyright (C) 2015 Renee Glinski. All rights reserved.
+
+ This software may be distributed and modified under the terms of the GNU
+ General Public License version 2 (GPL2) as published by the Free Software
+ Foundation and appearing in the file LICENSE included in the packaging of
+ this file. Please note that GPL2 Section 2[b] requires that all works based
+ on this software must also be made publicly available under the terms of
+ the GPL2 ("Copyleft").
+*/
+
+//TODO: Remove network reset at startup when Intel fixes the confirmed bug in GPIO
+//TODO: Seems to be an occasional bug where the inFalloverState is triggered when it clearly shouldn't
+//TODO: Improve stability
+//TODO: Allow for multiple Eddies on the same network
+//TODO: If not connected to WiFi start a hotspot for ones self
+//TODO: Add command line arguments for switching console/udp output... maybe camera etc..
+
 #include "imu/imu.h"
 #include "motordriver/MotorDriver.h"
 #include <stdio.h>
@@ -26,19 +44,14 @@ long long current_milliseconds()
 
 //#define DISABLE_MOTORS
 
-//TODO: Remove network reset at startup when Intel fixes the confirmed bug in GPIO
-//TODO: Finish IMU complementary filter and Kalman filter tuning
-//TODO: Finish motion compensation testing
-//TODO: Finish remote control testing
-//TODO: measure every interval and wait appropriate time
-
-#define DEFAULT_TRIM -2.0f //Eddie's balance point
+#define DEFAULT_TRIM -0.5f //Eddie's balance point
 
 #define DEFAULT_FWD_TRIM -1.25f //Trim used to drive forwards by changing angular setpoint
 #define DEFAULT_REV_TRIM 1.25f //Trim used to drive backwards by changing angular setpoint
 #define DEFAULT_TRN_TRIM 20.0f //Default trim for turning expressed in motor speed %
 
 #define MOTION_COMPENSATE_RATE 0.3 //Maximum
+
 #define DRIVE_TRIM_BLEED_RATE 0.8 //Degrees per iteration
 
 #define UDP_LISTEN_PORT 4242 //UDP Port for receiving commands
@@ -134,7 +147,10 @@ void signal_callback_handler(int signum)
  * TRIM+ = Trim forwards at 0.1 degree increment.
  * TRIM- = Trim backwards at 0.1 degree increment.
  *
- * PID[P,I,D][value] = adjust PIDs
+ * SETPIDS = Changes all PIDs for setpoint and pitch controllers
+ * GETPIDS = Returns all PIDs for setpoint and pitch controllers via UDP
+ *
+ * PID[P,I,D][value] = adjust pitch PIDs
  * PIS[P,I,D][value] = adjust setpoint PIDs
  * KALQ[value] = adjust Kalman Q Bias
  * KALR[value] = adjust Kalman R Measure
@@ -340,7 +356,6 @@ int main(int argc, char **argv)
 	//Set default values and init setpointPID controller
 	pidS_P_GAIN = PIDS_P_GAIN;	pidS_I_GAIN = PIDS_I_GAIN;	pidS_D_GAIN = PIDS_D_GAIN;	pidS_I_LIMIT = PID_I_LIMIT; pidS_EMA_SAMPLES = PIDS_EMA_SAMPLES;
 	PIDinit( &setpointPID, &pidS_P_GAIN, &pidS_I_GAIN, &pidS_D_GAIN, &pidS_I_LIMIT, &pidS_EMA_SAMPLES );
-
 	
 	//Get estimate of starting angle and specify complementary filter and kalman filter start angles
 	getOrientation();
@@ -348,15 +363,14 @@ int main(int argc, char **argv)
 	setkalmanangle( filteredPitch );
 	filteredRoll = i2cRoll;
 	
-	float testMotionTrim=0;
-	float testDriveTrim = 0;
-	
+float testMotionTrim=0;
+float testDriveTrim = 0;
+
 	print( "Eddie startup complete. Hold me upright to begin\r\n" );
 	
-	float gy_scale = 0.01;
-	last_PID_ms = last_gy_ms = current_milliseconds();
+float gy_scale = 0.01;
+last_PID_ms = last_gy_ms = current_milliseconds();
 	
-	int skipOutput = 0;
 	while(Running)
 	{		
 		getOrientation(); //print("i2cPitch: %6.2f i2cRoll: %6.2f\n",i2cPitch,i2cRoll);
@@ -366,14 +380,14 @@ int main(int argc, char **argv)
 		last_gy_ms = current_milliseconds();
 		
 		/*Complementary filters*/
-		filteredPitch = 0.97 * ( filteredPitch + ( gy * gy_scale ) ) + ( 0.03 * i2cPitch );
+		filteredPitch = 0.98 * ( filteredPitch + ( gy * gy_scale ) ) + ( 0.02 * i2cPitch );
 		filteredRoll = 0.98 * ( filteredRoll + ( gx * gy_scale ) ) + ( 0.02 * i2cRoll );
 		
-		/*Kalman filter*/	
-		kalmanAngle = -getkalmanangle(filteredPitch, gy, gy_scale /*dt*/);
+		/*Kalman filter - Also applied moving average to smooth angle estimate */	
+		kalmanAngle = ( 0.9 * kalmanAngle ) + ( 0.1 * -getkalmanangle(filteredPitch, gy, gy_scale /*dt*/) );
 		
 		/* Monitor angles to determine if Eddie has fallen too far or if Eddie has been returned upright*/
-		if ( ( fabs( filteredPitch ) > 30 || fabs( filteredRoll ) > 30 ) && !inFalloverState )
+		if ( ( fabs( kalmanAngle ) > 30 || fabs( filteredRoll ) > 45 ) && !inFalloverState )
 		{
 #ifndef DISABLE_MOTORS
 			motor_driver_standby(1);
@@ -405,7 +419,8 @@ int main(int argc, char **argv)
 			 * Now made into a function with adjustable parameters.
 			 * If you are PID tuning for balance I would recommend commenting this function.
 			 */
-			motion_comp( pitchPIDoutput, &testMotionTrim, 77.0 /*threshold*/, 7.5 /*max angle*/, MOTION_COMPENSATE_RATE );	 
+			//TODO: Not using motion_comp for now
+			//motion_comp( pitchPIDoutput, &testMotionTrim, 77.0 /*threshold*/, 7.5 /*max angle*/, MOTION_COMPENSATE_RATE );	 
 			 
 			/* Testing drive operations */
 			switch( currentDriveMode )
@@ -460,30 +475,15 @@ int main(int argc, char **argv)
 				testTurnTrim = 0;
 			break;				
 		}
-	
-		float testDrivePower = 0;
-		/* Testing forcing motor output on drive command 
-		 * PID Output shows that it can compensate for 60%?@!$@#
-		switch( currentDriveMode )
-		{
-			case DRIVE_FORWARD:
-				testDrivePower = 25.0;
-			break;
-			case DRIVE_REVERSE:
-				testDrivePower = -25.0;
-			break;
-		}
-		*/
+
 		
 #ifndef DISABLE_MOTORS
-		set_motor_speed_right( pitchPIDoutput + testDrivePower - testTurnTrim );
-		set_motor_speed_left( pitchPIDoutput + testDrivePower + testTurnTrim );
+		set_motor_speed_right( pitchPIDoutput - testTurnTrim );
+		set_motor_speed_left( pitchPIDoutput + testTurnTrim );
 #endif
 
 		if ( !inFalloverState || outputto == UDP )
 		{
-			//if ( ++skipOutput == 5 )
-			//{
 			print( "PIDout: %0.2f,%0.2f\tcompPitch: %6.2f kalPitch: %6.2f\tPe: %0.3f\tIe: %0.3f\tDe: %0.3f\tPe: %0.3f\tIe: %0.3f\tDe: %0.3f\r\n",
 				setpointPIDoutput, 
 				pitchPIDoutput, 
@@ -496,13 +496,7 @@ int main(int argc, char **argv)
 				setpointPID.accumulatedError, 
 				setpointPID.differentialError 
 				);
-			
-			//skipOutput = 0;
-			//}
 		}
-		
-//TODO: measure every interval and wait appropriate time
-//usleep(3000); //Wait 6ms with (measured) 4ms of processing for 10ms intervals
 
 	} //--while(Running)
 	
