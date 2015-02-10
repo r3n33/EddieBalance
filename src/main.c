@@ -38,7 +38,7 @@ long long current_milliseconds()
 #define DEFAULT_REV_TRIM 1.25f //Trim used to drive backwards by changing angular setpoint
 #define DEFAULT_TRN_TRIM 20.0f //Default trim for turning expressed in motor speed %
 
-#define MOTION_COMPENSATE_RATE 0.2 //Maximum
+#define MOTION_COMPENSATE_RATE 0.3 //Maximum
 #define DRIVE_TRIM_BLEED_RATE 0.8 //Degrees per iteration
 
 #define UDP_LISTEN_PORT 4242 //UDP Port for receiving commands
@@ -211,9 +211,35 @@ void UDP_Data_Handler( char * p_udpin )
 		print( "New PID D Gain Received: Changing %0.3f to %0.3f\r\n", pidP_D_GAIN, newGain );
 		pidP_D_GAIN = newGain;
 	}
+	else if ( strncmp( p_udpin, "SETPIDS:", 8 ) == 0 )
+	{
+		char * pch;
+		
+		pch = strtok ( &p_udpin[8], "," );
+		pidP_P_GAIN=atof(pch);
+		
+		pch = strtok (NULL, ",");
+		pidP_I_GAIN=atof(pch);
+		
+		pch = strtok (NULL, ",");
+		pidP_D_GAIN=atof(pch);
+		
+		pch = strtok (NULL, ",");
+		pidS_P_GAIN=atof(pch);
+		
+		pch = strtok (NULL, ",");
+		pidS_I_GAIN=atof(pch);
+		
+		pch = strtok (NULL, ",");
+		pidS_D_GAIN=atof(pch);		
+	}
 	
 	
 	
+	else if ( strncmp( p_udpin, "GETPIDS", 7 ) == 0 )
+	{
+		print( "CURRENTPIDS:%0.3f,%0.3f,%0.3f,%0.3f,%0.3f,%0.3f\r\n", pidP_P_GAIN, pidP_I_GAIN, pidP_D_GAIN, pidS_P_GAIN, pidS_I_GAIN, pidS_D_GAIN );
+	}
 	
 	
 	else if ( strncmp( p_udpin, "PISP", 4 ) == 0 )
@@ -340,7 +366,7 @@ int main(int argc, char **argv)
 		last_gy_ms = current_milliseconds();
 		
 		/*Complementary filters*/
-		filteredPitch = 0.992 * ( filteredPitch + ( gy * gy_scale ) ) + ( 0.008 * i2cPitch );
+		filteredPitch = 0.97 * ( filteredPitch + ( gy * gy_scale ) ) + ( 0.03 * i2cPitch );
 		filteredRoll = 0.98 * ( filteredRoll + ( gx * gy_scale ) ) + ( 0.02 * i2cRoll );
 		
 		/*Kalman filter*/	
@@ -379,7 +405,7 @@ int main(int argc, char **argv)
 			 * Now made into a function with adjustable parameters.
 			 * If you are PID tuning for balance I would recommend commenting this function.
 			 */
-			//motion_comp( pitchPIDoutput, &testMotionTrim, 22.0 /*threshold*/, 5.0 /*max angle*/, MOTION_COMPENSATE_RATE );	 
+			motion_comp( pitchPIDoutput, &testMotionTrim, 77.0 /*threshold*/, 7.5 /*max angle*/, MOTION_COMPENSATE_RATE );	 
 			 
 			/* Testing drive operations */
 			switch( currentDriveMode )
@@ -456,6 +482,8 @@ int main(int argc, char **argv)
 
 		if ( !inFalloverState || outputto == UDP )
 		{
+			//if ( ++skipOutput == 5 )
+			//{
 			print( "PIDout: %0.2f,%0.2f\tcompPitch: %6.2f kalPitch: %6.2f\tPe: %0.3f\tIe: %0.3f\tDe: %0.3f\tPe: %0.3f\tIe: %0.3f\tDe: %0.3f\r\n",
 				setpointPIDoutput, 
 				pitchPIDoutput, 
@@ -469,11 +497,12 @@ int main(int argc, char **argv)
 				setpointPID.differentialError 
 				);
 			
-			skipOutput = 0;
+			//skipOutput = 0;
+			//}
 		}
 		
-		//TODO: measure every interval and wait appropriate time
-		usleep(6000); //Wait 6ms with (measured) 4ms of processing for 10ms intervals
+//TODO: measure every interval and wait appropriate time
+//usleep(3000); //Wait 6ms with (measured) 4ms of processing for 10ms intervals
 
 	} //--while(Running)
 	
