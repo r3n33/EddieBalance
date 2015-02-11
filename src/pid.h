@@ -8,19 +8,19 @@
 #define PID_H_
 
 //For I Term Saturation
-#define PID_I_LIMIT  10.0 //Ilimit is before process gain
+#define PID_I_LIMIT  5.0 //Ilimit is before process gain
 
-//Setpoint PID Configuration
-#define PIDS_P_GAIN 0.2f
-#define PIDS_I_GAIN 100.0f
-#define PIDS_D_GAIN 10.0f
-#define PIDS_EMA_SAMPLES 1.02f
+//Speed PID Configuration
+#define PIDS_P_GAIN 1.0f
+#define PIDS_I_GAIN 0.0f
+#define PIDS_D_GAIN 0.0f
+#define PIDS_EMA_SAMPLES 1.0f
 
 //Pitch PID Configuration
-#define PIDP_P_GAIN 16.0f
-#define PIDP_I_GAIN 100.0f
-#define PIDP_D_GAIN 60.0f
-#define PIDP_EMA_SAMPLES 1.02f
+#define PIDP_P_GAIN 13.0f
+#define PIDP_I_GAIN 125.0f
+#define PIDP_D_GAIN 17.0f
+#define PIDP_EMA_SAMPLES 1.0f
 
 typedef struct
 {

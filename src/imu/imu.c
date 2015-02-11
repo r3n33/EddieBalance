@@ -38,9 +38,9 @@ char readi2c(int address, int reg, int count)
 void readGyro()
 {
 	readi2c(GYRO_I2C_ADDR, OUT_X_L_G, 6); // Read 6 bytes, beginning at OUT_X_L_G
-	float tgx = (float)((short)(rx_tx_buf[1] << 8) | rx_tx_buf[0])*0.06103515625;//0.007476806640625; // Store x-axis values into gx
-	float tgy = (float)((short)(rx_tx_buf[3] << 8) | rx_tx_buf[2])*0.06103515625;//0.007476806640625; // Store y-axis values into gy
-	float tgz = (float)((short)(rx_tx_buf[5] << 8) | rx_tx_buf[4])*0.06103515625;//0.007476806640625; // Store z-axis values into gz
+	float tgx = (float)((short)(rx_tx_buf[1] << 8) | rx_tx_buf[0])*(500.0 /*dps*// 32768.0);
+	float tgy = (float)((short)(rx_tx_buf[3] << 8) | rx_tx_buf[2])*(500.0 /*dps*// 32768.0);
+	float tgz = (float)((short)(rx_tx_buf[5] << 8) | rx_tx_buf[4])*(500.0 /*dps*// 32768.0);
 	
 	gx = tgz;
 	gy = tgy;
@@ -83,10 +83,7 @@ void readSensors()
 
 void getOrientation()
 {
-	readGyro(); //Don't forget me says the gyros!
-  // Grab an acceleromter and magnetometer reading.
- 	readAccel();
-	readMag();
+	readSensors();
 
   float const PI_F = 3.14159265F;
 
@@ -128,14 +125,14 @@ void imuinit()
 	i2c = mraa_i2c_init(1);
 	
 	sendi2c( GYRO_I2C_ADDR, FIFO_CTRL_REG_G, 0 );
-	sendi2c( GYRO_I2C_ADDR, CTRL_REG1_G, 0xFF ); //??unknown config??
+	sendi2c( GYRO_I2C_ADDR, CTRL_REG1_G, 0x0F ); //Normal mode, enable all axes //0xFF ); //??unknown config??
 	sendi2c( GYRO_I2C_ADDR, CTRL_REG2_G, 0x00); // Normal mode, high cutoff frequency
-	sendi2c( GYRO_I2C_ADDR, CTRL_REG4_G, 0x30 ); // Set scale to 2000 dps
+	sendi2c( GYRO_I2C_ADDR, CTRL_REG4_G, 0x10 ); // Set scale to 500 dps
 	sendi2c( GYRO_I2C_ADDR, CTRL_REG5_G, 0x00 ); // FIFO Disabled, HPF Disabled
 	
 	sendi2c( XM_I2C_ADDR, FIFO_CTRL_REG, 0 );
 	sendi2c( XM_I2C_ADDR, CTRL_REG1_XM, 0xFF );
-	sendi2c( XM_I2C_ADDR, CTRL_REG2_XM, 0x00); 
+	sendi2c( XM_I2C_ADDR, CTRL_REG2_XM, 0x00); //Set scale +/-2g
 	sendi2c( XM_I2C_ADDR, CTRL_REG4_XM, 0x30 );
 	
 	sendi2c( XM_I2C_ADDR, CTRL_REG5_XM, 0x94);
