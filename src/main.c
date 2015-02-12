@@ -53,8 +53,6 @@ long long current_milliseconds()
 
 #define DRIVE_TRIM_BLEED_RATE 0.8 //Degrees per iteration
 
-#define UDP_LISTEN_PORT 4242 //UDP Port for receiving commands
-
 enum
 {
 	CONSOLE=0,
@@ -119,7 +117,7 @@ int print(const char *format, ...)
 			printf("%s",buffer);
 		break;
 		case UDP:
-			broadcast(buffer,len);
+			UDPSend(buffer,len);
 		break;
 	}
 
@@ -275,10 +273,10 @@ void UDP_Data_Handler( char * p_udpin )
 		print( "New Speed PID D Gain Received: Changing %0.3f to %0.3f\r\n", pidS_D_GAIN, newGain );
 		pidS_D_GAIN = newGain;
 	}
-	
-	
-	
-	
+	else if ( strncmp( p_udpin, "STOPUDP", 7 ) == 0 )
+	{
+		bsock=-1;
+	}
 	else if ( strncmp( p_udpin, "KALQA", 4 ) == 0 )
 	{
 		float newGain = 0;
