@@ -76,7 +76,7 @@ int checkUDPReady( char * udpBuffer )
 		udpMsgLen = recvfrom( sockfd, udpBuffer, MAXMESSAGESIZE, 0, ( struct sockaddr * ) &cliaddr, &len );
 		udpBuffer[ udpMsgLen ] = 0;
 		
-		initUDPSend( (char*)inet_ntoa( cliaddr.sin_addr ), UDP_LISTEN_PORT + 1 );
+		if ( bsock < 0 ) initUDPSend( (char*)inet_ntoa( cliaddr.sin_addr ), UDP_LISTEN_PORT + 1 );
 		
 		return 1;
 	}

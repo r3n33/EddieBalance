@@ -134,6 +134,9 @@ void signal_callback_handler(int signum)
 
 /* Current UDP Commands:
  *
+ * DRIVE[value]	=	+ is Forwards, - is Reverse, 0.0 is IDLE
+ * TURN[value]	=	+ is Right, - is Left, 0.0 is STRAIGHT
+ *
  * IDLE 	= No forward or reverse, just balance.
  * FORWARD 	= Drive forwards; 	FORWARD2.5 = Drive forwards at 2.5 degree angle.
  * REVERSE 	= Drive backwards; 	REVERSE3.5 = Drive reverse at 3.5 degree angle.
@@ -152,6 +155,8 @@ void signal_callback_handler(int signum)
  * KALQ[value] = adjust Kalman Q Bias
  * KALR[value] = adjust Kalman R Measure
  *
+ * STOPUDP	= Will stop Eddie from sending UDP to last client
+ *
  */
 void UDP_Data_Handler( char * p_udpin )
 {
@@ -165,6 +170,79 @@ void UDP_Data_Handler( char * p_udpin )
 		currentTrim += 0.1;
 		print( "Trim backwards command received and set to: %0.2f\r\n", currentTrim );
 	}
+	/*New DRIVE commands -- NOTE: Will replace FORWARD,BACKWARD,IDLE commands */
+	else if( !memcmp( p_udpin, "DRIVE", 5 ) )
+	{
+		float driveSpeed = atof( &p_udpin[5] );
+		if ( driveSpeed > 0.0 )
+		{
+			driveForwardTrim = -driveSpeed; //Inverting because DRIVE+ is a negative angle
+			currentDriveMode = DRIVE_FORWARD;
+			print( "Drive Mode: DRIVE FORWARD command at %0.2f deg angle\r\n", driveForwardTrim );
+		}
+		else if ( driveSpeed < 0.0 )
+		{
+			driveReverseTrim = -driveSpeed; //Inverting becaue DRIVE- is a positive angle
+			currentDriveMode = DRIVE_REVERSE;
+			print( "Drive Mode: DRIVE REVERSE command at %0.2f deg angle\r\n", driveReverseTrim );
+		}
+		else
+		{
+			currentDriveMode = DRIVE_IDLE;
+			print( "Drive Mode: DRIVE 0 (IDLE) command received\r\n" );
+		}
+	}
+	/*New TURN commands -- NOTE: Will replace LEFT,RIGHT,STRAIGHT commands */
+	else if( !memcmp( p_udpin, "TURN", 4 ) )
+	{
+		float turnSpeed = atof( &p_udpin[4] );
+		if ( turnSpeed > 0.0 )
+		{
+			driveRightTrim = turnSpeed;
+			currentTurnMode = TURN_RIGHT;
+			print( "Turn Mode: TURN RIGHT command at %0.2f speed received\r\n", driveRightTrim );
+		}
+		else if ( turnSpeed < 0.0 )
+		{
+			driveLeftTrim = turnSpeed;
+			currentTurnMode = TURN_LEFT;
+			print( "Turn Mode: TURN LEFT command at %0.2f speed received\r\n", driveLeftTrim );
+		}
+		else
+		{
+			currentTurnMode = TURN_IDLE;
+			print( "Turn Mode: TURN 0 (STRAIGHT) command received\r\n" );
+		}
+	}
+	/* Get/Set all PID quick commands*/
+	else if ( strncmp( p_udpin, "SETPIDS:", 8 ) == 0 )
+	{
+		char * pch;
+		
+		pch = strtok ( &p_udpin[8], "," );
+		pidP_P_GAIN=atof(pch);
+		
+		pch = strtok (NULL, ",");
+		pidP_I_GAIN=atof(pch);
+		
+		pch = strtok (NULL, ",");
+		pidP_D_GAIN=atof(pch);
+		
+		pch = strtok (NULL, ",");
+		pidS_P_GAIN=atof(pch);
+		
+		pch = strtok (NULL, ",");
+		pidS_I_GAIN=atof(pch);
+		
+		pch = strtok (NULL, ",");
+		pidS_D_GAIN=atof(pch);		
+	}
+	else if ( strncmp( p_udpin, "GETPIDS", 7 ) == 0 )
+	{
+		print( "CURRENTPIDS:%0.3f,%0.3f,%0.3f,%0.3f,%0.3f,%0.3f\r\n", pidP_P_GAIN, pidP_I_GAIN, pidP_D_GAIN, pidS_P_GAIN, pidS_I_GAIN, pidS_D_GAIN );
+	}
+	
+	/* OLD Drive/Turn commands */
 	else if( !memcmp( p_udpin, "IDLE", 4 ) )
 	{
 		currentDriveMode = DRIVE_IDLE;
@@ -203,6 +281,8 @@ void UDP_Data_Handler( char * p_udpin )
 		currentTurnMode = TURN_IDLE;
 		print( "Turn Mode: SRAIGHT command received\r\n" );
 	}
+	
+	/* Individual Pitch PID Controller commands */
 	else if ( strncmp( p_udpin, "PPIDP", 5 ) == 0 )
 	{
 		float newGain = 0;
@@ -224,34 +304,7 @@ void UDP_Data_Handler( char * p_udpin )
 		print( "New Pitch PID D Gain Received: Changing %0.3f to %0.3f\r\n", pidP_D_GAIN, newGain );
 		pidP_D_GAIN = newGain;
 	}
-	else if ( strncmp( p_udpin, "SETPIDS:", 8 ) == 0 )
-	{
-		char * pch;
-		
-		pch = strtok ( &p_udpin[8], "," );
-		pidP_P_GAIN=atof(pch);
-		
-		pch = strtok (NULL, ",");
-		pidP_I_GAIN=atof(pch);
-		
-		pch = strtok (NULL, ",");
-		pidP_D_GAIN=atof(pch);
-		
-		pch = strtok (NULL, ",");
-		pidS_P_GAIN=atof(pch);
-		
-		pch = strtok (NULL, ",");
-		pidS_I_GAIN=atof(pch);
-		
-		pch = strtok (NULL, ",");
-		pidS_D_GAIN=atof(pch);		
-	}
-	else if ( strncmp( p_udpin, "GETPIDS", 7 ) == 0 )
-	{
-		print( "CURRENTPIDS:%0.3f,%0.3f,%0.3f,%0.3f,%0.3f,%0.3f\r\n", pidP_P_GAIN, pidP_I_GAIN, pidP_D_GAIN, pidS_P_GAIN, pidS_I_GAIN, pidS_D_GAIN );
-	}
-	
-	
+	/* Individual Speed PID Controller commands*/
 	else if ( strncmp( p_udpin, "SPIDP", 5 ) == 0 )
 	{
 		float newGain = 0;
@@ -273,10 +326,7 @@ void UDP_Data_Handler( char * p_udpin )
 		print( "New Speed PID D Gain Received: Changing %0.3f to %0.3f\r\n", pidS_D_GAIN, newGain );
 		pidS_D_GAIN = newGain;
 	}
-	else if ( strncmp( p_udpin, "STOPUDP", 7 ) == 0 )
-	{
-		bsock=-1;
-	}
+	/* Pitch Kalman filter tuning commands */
 	else if ( strncmp( p_udpin, "KALQA", 4 ) == 0 )
 	{
 		float newGain = 0;
@@ -297,7 +347,12 @@ void UDP_Data_Handler( char * p_udpin )
 		newGain = atof( &p_udpin[4] );
 		print( "Setting Kalman R Measure to: %0.4f\r\n", newGain );
 		setRmeasure( newGain );
-	}	
+	}
+	/* UDP Hangup command */
+	else if ( strncmp( p_udpin, "STOPUDP", 7 ) == 0 )
+	{
+		bsock=-1;
+	}
 }
 
 void motion_comp( float p_speed, float * p_trim, float p_threshold, float p_maxAngle, float p_maxRate )
@@ -354,7 +409,7 @@ int main(int argc, char **argv)
 	pidP_P_GAIN = PIDP_P_GAIN;	pidP_I_GAIN = PIDP_I_GAIN;	pidP_D_GAIN = PIDP_D_GAIN;	pidP_I_LIMIT = PID_I_LIMIT; pidP_EMA_SAMPLES = PIDP_EMA_SAMPLES;
 	PIDinit( &pitchPID, &pidP_P_GAIN, &pidP_I_GAIN, &pidP_D_GAIN, &pidP_I_LIMIT, &pidP_EMA_SAMPLES );
 	
-//Set default values and init speedPID controller
+/*Set default values and init speedPID controller*/
 pidS_P_GAIN = PIDS_P_GAIN;	pidS_I_GAIN = PIDS_I_GAIN;	pidS_D_GAIN = PIDS_D_GAIN;	pidS_I_LIMIT = PID_I_LIMIT; pidS_EMA_SAMPLES = PIDS_EMA_SAMPLES;
 PIDinit( &speedPID, &pidS_P_GAIN, &pidS_I_GAIN, &pidS_D_GAIN, &pidS_I_LIMIT, &pidS_EMA_SAMPLES );
 	
@@ -418,7 +473,16 @@ last_PID_ms = last_gy_ms = current_milliseconds();
 		{
 			inSteadyState = 0;
 		}
-		
+
+/*
+SHHHHHH Be verry verry quiet... I'm hunting an IMU read bug..
+*/
+if ( fabs( kalmanAngle ) > 100 )
+{
+printf( "WTF Pitch Status: i2c:%0.2f smoothed:%0.2f kalman:%0.2f gyroDT:%0.2f gy:%0.2f\r\n", i2cPitch, filteredPitch, kalmanAngle, gy_scale, gy );
+signal_callback_handler(80085); //Exit boobs
+}
+
 		if ( !inFalloverState )
 		{
 			/* Testing adjusting setpoint when motor speeds exceed threshold
