@@ -14,6 +14,7 @@
 //TODO: If not connected to WiFi start a hotspot for ones self
 //TODO: Add command line arguments for switching console/udp output... maybe camera etc..
 //TODO: Add encoder support for speed PID controller
+//TODO: Investigate Yocto high resolution timers more.. 
 
 #include "imu/imu.h"
 #include "motordriver/MotorDriver.h"
@@ -25,19 +26,19 @@
 #include "pid.h"
 #include <stdarg.h> //print function
 #include "Kalman.h"
-
+#include "encoder.h"
 #include "udp.h"
 
 #include <sys/time.h>
 
-long long last_gy_ms;
-long long last_PID_ms;
+double last_gy_ms;
+double last_PID_ms;
 
-long long current_milliseconds() 
+double current_milliseconds() 
 {
     struct timeval c_time; 
     gettimeofday(&c_time, NULL);
-    long long milliseconds = c_time.tv_sec*1000LL + c_time.tv_usec/1000;
+    double milliseconds = c_time.tv_sec*1000 + c_time.tv_usec/1000;
     return milliseconds;
 }
 
@@ -128,7 +129,6 @@ int print(const char *format, ...)
 void signal_callback_handler(int signum)
 {
 	print("Exiting program; Caught signal %d\r\n",signum);
-
 	Running = 0;
 }
 
@@ -385,6 +385,9 @@ int main(int argc, char **argv)
 	
 	print("Eddie starting...\r\n");
 
+long long EncoderPos[2] = {0};
+initEncoders( 183, 46, 45, 44 );
+
 	imuinit();
 	print("IMU Started.\r\n");
 
@@ -431,8 +434,12 @@ last_PID_ms = last_gy_ms = current_milliseconds();
 //setQbias( 0.001 );
 //setRmeasure( 0.03 );
 
+
 	while(Running)
 	{
+		GetEncoder( EncoderPos );
+		//printf( "Encoder L: %4lld R: %4lld\r\n", EncoderPos[0], EncoderPos[1] );
+		
 		/*Read IMU and calculate rough angle estimates*/
 		getOrientation();
 		
@@ -442,7 +449,7 @@ last_PID_ms = last_gy_ms = current_milliseconds();
 		last_gy_ms = current_milliseconds();
 		
 		/*Complementary filters to smooth rough pitch and roll estimates*/
-		filteredPitch = 0.998 * ( filteredPitch + ( gy * gy_scale ) ) + ( 0.002 * i2cPitch );
+		filteredPitch = 0.98 * ( filteredPitch + ( gy * gy_scale ) ) + ( 0.02 * i2cPitch );
 		filteredRoll = 0.98 * ( filteredRoll + ( gx * gy_scale ) ) + ( 0.02 * i2cRoll );
 		
 		/*Kalman filter for most accurate pitch estimates*/	
@@ -490,7 +497,7 @@ signal_callback_handler(80085); //Exit boobs
 			 * Now made into a function with adjustable parameters.
 			 * If you are PID tuning for balance I would recommend commenting this function.
 			 */
-			motion_comp( pitchPIDoutput, &testMotionTrim, 22.0 /*threshold*/, 10.0 /*max angle*/, MOTION_COMPENSATE_RATE );	 
+			//motion_comp( pitchPIDoutput, &testMotionTrim, 22.0 /*threshold*/, 10.0 /*max angle*/, MOTION_COMPENSATE_RATE );	 
 			
 			/* Testing drive operations */
 			switch( currentDriveMode )
@@ -515,8 +522,10 @@ signal_callback_handler(80085); //Exit boobs
 				break;
 			}
 			
-			//Use pitchPID to determine motor speeds needed to hold angle
-			pitchPIDoutput = PIDUpdate( currentTrim+testDriveTrim, kalmanAngle, current_milliseconds() - last_PID_ms, &pitchPID);
+//Wheel Speed PIDs
+			speedPIDoutput = PIDUpdate( 0, EncoderPos[1], current_milliseconds() - last_PID_ms, &speedPID);
+	//Use pitchPID to determine motor speeds needed to hold angle
+			pitchPIDoutput = PIDUpdate( speedPIDoutput, kalmanAngle, current_milliseconds() - last_PID_ms, &pitchPID);
 			
 			last_PID_ms = current_milliseconds();
 			
@@ -526,6 +535,7 @@ signal_callback_handler(80085); //Exit boobs
 		}
 		else //We are inFalloverState and the PID i term should remain 0
 		{
+			ResetEncoders();
 			pitchPID.accumulatedError = 0;
 			speedPID.accumulatedError = 0;
 		}
@@ -569,6 +579,8 @@ signal_callback_handler(80085); //Exit boobs
 	} //--while(Running)
 	
 	print( "Eddie is cleaning up...\r\n" );
+	
+CloseEncoder();
 	
 	pthread_join(udplistenerThread, NULL);
 	print( "UDP Thread Joined..\r\n" );
