@@ -30,22 +30,22 @@ void EncoderInterruptA( void * args )
 		{
 			if( currentpins[ 1 ]  )
 			{
-				++change;
+				--change;
 			}
 			else
 			{
-				--change;
+				++change;
 			}
 		}
 		else 
 		{
 			if( currentpins[ 1 ] )
 			{
-				--change;
+				++change;
 			}
 			else
 			{
-				++change;
+				--change;
 			}
 		}
 	}
@@ -55,22 +55,22 @@ void EncoderInterruptA( void * args )
 		{
 			if( currentpins[ 0 ] )
 			{
-				--change;
+				++change;
 			}
 			else
 			{
-				++change;
+				--change;
 			}
 		}
 		else 
 		{
 			if( currentpins[ 0 ] )
 			{
-				++change;
+				--change;
 			}
 			else
 			{
-				--change;
+				++change;
 			}
 		}
 	}
@@ -150,7 +150,12 @@ void ResetEncoders()
 	position[ 0 ] = position[ 1 ] = 0;
 }
 
-void GetEncoder( double * temp )
+double GetEncoder()
+{
+	return ( position[ 0 ] + position[ 1 ] ) / 2;
+}
+
+void GetEncoders( double * temp )
 {	
 	temp[0] = position[ 0 ];
 	temp[1] = position[ 1 ];

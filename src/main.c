@@ -288,7 +288,9 @@ int main(int argc, char **argv)
 	
 	print("Eddie starting...\r\n");
 
+	double EncoderAverage;
 	double EncoderPos[2] = {0};
+	
 	initEncoders( 183, 46, 45, 44 );
 	print("Encoders activated.\r\n");
 
@@ -314,11 +316,11 @@ int main(int argc, char **argv)
 	
 	print( "Eddie is Starting PID controller\r\n" );
 	/*Set default PID values and init pitchPID controller*/
-	pidP_P_GAIN = PIDP_P_GAIN;	pidP_I_GAIN = PIDP_I_GAIN;	pidP_D_GAIN = PIDP_D_GAIN;	pidP_I_LIMIT = PID_I_LIMIT; pidP_EMA_SAMPLES = PIDP_EMA_SAMPLES;
+	pidP_P_GAIN = PIDP_P_GAIN;	pidP_I_GAIN = PIDP_I_GAIN;	pidP_D_GAIN = PIDP_D_GAIN;	pidP_I_LIMIT = PIDP_I_LIMIT; pidP_EMA_SAMPLES = PIDP_EMA_SAMPLES;
 	PIDinit( &pitchPID, &pidP_P_GAIN, &pidP_I_GAIN, &pidP_D_GAIN, &pidP_I_LIMIT, &pidP_EMA_SAMPLES );
 	
 	/*Set default values and init speedPID controller*/
-	pidS_P_GAIN = PIDS_P_GAIN;	pidS_I_GAIN = PIDS_I_GAIN;	pidS_D_GAIN = PIDS_D_GAIN;	pidS_I_LIMIT = PID_I_LIMIT; pidS_EMA_SAMPLES = PIDS_EMA_SAMPLES;
+	pidS_P_GAIN = PIDS_P_GAIN;	pidS_I_GAIN = PIDS_I_GAIN;	pidS_D_GAIN = PIDS_D_GAIN;	pidS_I_LIMIT = PIDS_I_LIMIT; pidS_EMA_SAMPLES = PIDS_EMA_SAMPLES;
 	PIDinit( &speedPID, &pidS_P_GAIN, &pidS_I_GAIN, &pidS_D_GAIN, &pidS_I_LIMIT, &pidS_EMA_SAMPLES );
 	
 	//Get estimate of starting angle and specify complementary filter and kalman filter start angles
@@ -334,9 +336,9 @@ int main(int argc, char **argv)
 
 	while(Running)
 	{
-		GetEncoder( EncoderPos );
+		EncoderAverage = GetEncoder();
 		
-		if( fabs(EncoderPos[1]) > 1000 && !inRunAwayState )
+		if( fabs(EncoderAverage) > 1000 && !inRunAwayState )
 		{
 			print( "Help! I'm running and not moving.\r\n");
 			ResetEncoders();
@@ -400,7 +402,7 @@ int main(int argc, char **argv)
 			}
 			
 			//Wheel Speed PIDs
-			speedPIDoutput = PIDUpdate( 0, EncoderPos[1], current_milliseconds() - last_PID_ms, &speedPID);
+			speedPIDoutput = PIDUpdate( 0, EncoderAverage, current_milliseconds() - last_PID_ms, &speedPID);
 			//Pitch Angle PIDs
 			pitchPIDoutput = PIDUpdate( speedPIDoutput, kalmanAngle, current_milliseconds() - last_PID_ms, &pitchPID);
 			
@@ -433,7 +435,7 @@ int main(int argc, char **argv)
 		}
 	
 #ifndef DISABLE_MOTORS
-		set_motor_speed_right( pitchPIDoutput /*- testTurnTrim*/ );
+		set_motor_speed_right( pitchPIDoutput - testTurnTrim );
 		set_motor_speed_left( pitchPIDoutput + testTurnTrim );
 #endif
 
