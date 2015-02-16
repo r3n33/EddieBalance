@@ -12,7 +12,7 @@
 //left encoder: 183 46
 //right encoder: 45 44
 
-static volatile long long position[ 2 ];
+static volatile double position[ 2 ];
 mraa_gpio_context encoderx[ 4 ];
 
 int lastpins[ 4 ];
@@ -80,6 +80,7 @@ void EncoderInterruptA( void * args )
 	lastpins[ 0 ] = currentpins[ 0 ];
 	lastpins[ 1 ] = currentpins[ 1 ];	
 }
+
 void EncoderInterruptB( void * args ) 
 {		
 	int currentpins[ 2 ];
@@ -149,17 +150,23 @@ void ResetEncoders()
 	position[ 0 ] = position[ 1 ] = 0;
 }
 
-void GetEncoder( long long * temp )
+void GetEncoder( double * temp )
 {	
 	temp[0] = position[ 0 ];
 	temp[1] = position[ 1 ];
 }
 
-void GetEncoderChange( long long * temp )
+void GetEncoderChange( double * temp )
 {	
 	temp[0] = position[ 0 ];
 	temp[1] = position[ 1 ];
 	position[ 0 ] = position[ 1 ] = 0;
+}
+
+void Move( double distance )
+{
+	position[0] += distance;
+	position[1] += distance;
 }
 
 void initEncoders( int a, int b, int c, int d )
