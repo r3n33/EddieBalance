@@ -11,9 +11,9 @@
 
 
 //Speed PID Configuration
-#define PIDS_P_GAIN 0.015f
-#define PIDS_I_GAIN 1300.0f
-#define PIDS_D_GAIN 550.0f
+#define PIDS_P_GAIN 0.018f
+#define PIDS_I_GAIN 1500.0f
+#define PIDS_D_GAIN 430.0f
 #define PIDS_EMA_SAMPLES 10.0f
 #define PIDS_I_LIMIT  500.0 //Ilimit is before process gain
 

@@ -334,6 +334,8 @@ int main(int argc, char **argv)
 	float gy_scale = 0.01;
 	last_PID_ms = last_gy_ms = current_milliseconds();
 
+	float test_smoothDriveTrim;
+	
 	while(Running)
 	{
 		EncoderAverage = GetEncoder();
@@ -391,13 +393,14 @@ int main(int argc, char **argv)
 		if ( !inFalloverState )
 		{
 			/* Drive operations */
+			test_smoothDriveTrim = ( 0.97 * test_smoothDriveTrim ) + ( 0.03 * driveTrim );
 			switch( currentDriveMode )
 			{
 				case DRIVE_FORWARD:
-					Move(driveTrim);
+					Move(test_smoothDriveTrim);
 				break;
 				case DRIVE_REVERSE:
-					Move(driveTrim);
+					Move(test_smoothDriveTrim);
 				break;
 			}
 			

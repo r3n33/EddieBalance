@@ -38,7 +38,7 @@ int motor_driver_enable()
 	system( "echo out > /sys/class/gpio/gpio14/direction" );
 	system( "echo out > /sys/class/gpio/gpio49/direction" );
 
-	system("systemctl restart wpa_supplicant"); //TODO: This is a temporary workaround to resolve wifi issue with GPIO 48
+	//system("systemctl restart wpa_supplicant"); //TODO: This is a temporary workaround to resolve wifi issue with GPIO 48
 
 	/* MRAA GPIO Initialization.. Works fine but I didn't use it.
 	gpio_ain1 = mraa_gpio_init(48);
