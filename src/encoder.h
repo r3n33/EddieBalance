@@ -145,14 +145,20 @@ void EncoderInterruptB( void * args )
 	lastpins[ 3 ] = currentpins[ 1 ];	
 }
 
+void CenterEncoders()
+{
+	double average = ( position[ 0 ] + position[ 1 ] ) / 2;
+	position[ 0 ] = position[ 1 ] = average;
+}
+
 void ResetEncoders()
 {
 	position[ 0 ] = position[ 1 ] = 0;
 }
 
-double GetEncoder()
+double GetEncoder(  )
 {
-	return ( position[ 0 ] + position[ 1 ] ) / 2;
+	return (position[ 0 ]+position[ 1 ])/2;
 }
 
 void GetEncoders( double * temp )
@@ -168,7 +174,13 @@ void GetEncoderChange( double * temp )
 	position[ 0 ] = position[ 1 ] = 0;
 }
 
-void Move( double distance )
+void EncoderAddPos2( double distance1, double distance2 )
+{
+	position[0] += distance1;
+	position[1] += distance2;
+}
+
+void EncoderAddPos( double distance )
 {
 	position[0] += distance;
 	position[1] += distance;

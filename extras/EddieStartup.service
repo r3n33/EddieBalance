@@ -1,6 +1,7 @@
 [Unit]
-Description=iotkit-agent
-After=network.target
+Description=EddieStartup
+After=network-online.target
+Requires=network-online.target
 
 [Service]
 ExecStart=/home/root/EddieBalance/src/./EddieBalance
