@@ -304,8 +304,17 @@ int main(int argc, char **argv)
 		
 		/*Calculate time since last IMU reading and determine gyro scale (dt)*/
 		gy_scale = (float)( current_milliseconds() - last_gy_ms ) / 1000.0f;
-		//printf( "gy scale: %0.2f last_gy_ms: %d\r\n", gy_scale, current_milliseconds() - last_gy_ms );
-		last_gy_ms = current_milliseconds();
+	
+//TODO: This is a temporary check for the gyro scale calculation. 
+//		At times, espcially just after boot, the current_milliseconds seems to be incorrect.
+//		The gy_scale will sometimes be extremely large causing bad IMU readings that throw pitch way off.
+//		Largest dt noticed was 0.03 worst case so far.
+if ( gy_scale > 0.03 )
+{
+	printf( "gy scale: %0.4f last_gy_ms: %d\r\n", gy_scale, current_milliseconds() - last_gy_ms );
+	gy_scale = 0.03;
+}
+	last_gy_ms = current_milliseconds();
 		
 		/*Complementary filters to smooth rough pitch and roll estimates*/
 		filteredPitch = 0.98 * ( filteredPitch + ( gy * gy_scale ) ) + ( 0.02 * i2cPitch );
