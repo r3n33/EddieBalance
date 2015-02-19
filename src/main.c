@@ -29,8 +29,8 @@
 
 #include <sys/time.h>
 
-double last_gy_ms;
-double last_PID_ms;
+static double last_gy_ms;
+static double last_PID_ms;
 double current_milliseconds() 
 {
     struct timeval c_time; 
@@ -51,7 +51,8 @@ int outputto = UDP; //Change to fit current need.
 int Running = 1;
 int inFalloverState = 0; //Used to flag when Eddie has fallen over and disables motors
 int inRunAwayState = 0;
-int inSteadyState = 0; //Used to flag how long Eddie is being held upright in a stead state and will enable motors
+int inSteadyState = 0; //Used to flag how long Eddie is being held upright in a steady state and will enable motors
+int StreamData = 0;
 
 PID_t pitchPID[2]; //PID Controllers for pitch angle
 float pitchPIDoutput[2] = {0};
@@ -226,6 +227,15 @@ void UDP_Data_Handler( char * p_udpin )
 	{
 		bsock=-1;
 	}
+	
+	else if ( strncmp( p_udpin, "STREAM1", 7 ) == 0 )
+	{
+		StreamData = 1;
+	}
+	else if ( strncmp( p_udpin, "STREAM0", 7 ) == 0 )
+	{
+		StreamData = 0;
+	}
 }
 
 int main(int argc, char **argv)
@@ -303,26 +313,17 @@ int main(int argc, char **argv)
 		getOrientation();
 		
 		/*Calculate time since last IMU reading and determine gyro scale (dt)*/
-		gy_scale = (float)( current_milliseconds() - last_gy_ms ) / 1000.0f;
+		gy_scale = ( current_milliseconds() - last_gy_ms ) / 1000.0f;
 	
-//TODO: This is a temporary check for the gyro scale calculation. 
-//		At times, espcially just after boot, the current_milliseconds seems to be incorrect.
-//		The gy_scale will sometimes be extremely large causing bad IMU readings that throw pitch way off.
-//		Largest dt noticed was 0.03 worst case so far.
-if ( gy_scale > 0.03 )
-{
-	printf( "gy scale: %0.4f last_gy_ms: %d\r\n", gy_scale, current_milliseconds() - last_gy_ms );
-	gy_scale = 0.03;
-}
-	last_gy_ms = current_milliseconds();
+		last_gy_ms = current_milliseconds();
 		
 		/*Complementary filters to smooth rough pitch and roll estimates*/
 		filteredPitch = 0.98 * ( filteredPitch + ( gy * gy_scale ) ) + ( 0.02 * i2cPitch );
 		filteredRoll = 0.98 * ( filteredRoll + ( gx * gy_scale ) ) + ( 0.02 * i2cRoll );
-		
+
 		/*Kalman filter for most accurate pitch estimates*/	
 		kalmanAngle = -getkalmanangle(filteredPitch, gy, gy_scale /*dt*/);
-		
+
 		/* Monitor angles to determine if Eddie has fallen too far... or if Eddie has been returned upright*/
 		if ( ( inRunAwayState || ( fabs( kalmanAngle ) > 50 || fabs( filteredRoll ) > 45 ) ) && !inFalloverState ) 
 		{
@@ -371,8 +372,8 @@ if ( gy_scale > 0.03 )
 				CenterEncoders();
 			}
 						
-			double timenow = current_milliseconds() ;
-			
+			double timenow = current_milliseconds();
+
 			speedPIDoutput[0] = PIDUpdate( 0, EncoderPos[0], timenow - last_PID_ms, &speedPID[0] );//Wheel Speed PIDs
 			speedPIDoutput[1] = PIDUpdate( 0, EncoderPos[1], timenow - last_PID_ms, &speedPID[1] );//Wheel Speed PIDs
 			pitchPIDoutput[0] = PIDUpdate( speedPIDoutput[0], kalmanAngle, timenow - last_PID_ms, &pitchPID[0] );//Pitch Angle PIDs		
@@ -401,8 +402,8 @@ if ( gy_scale > 0.03 )
 		set_motor_speed_left( pitchPIDoutput[1] );
 #endif
 
-		if ( !inFalloverState || outputto == UDP )
-		{
+		if ( (!inFalloverState || outputto == UDP) && StreamData )
+		{			
 			print( "PIDout: %0.2f,%0.2f\tcompPitch: %6.2f kalPitch: %6.2f\tPe: %0.3f\tIe: %0.3f\tDe: %0.3f\tPe: %0.3f\tIe: %0.3f\tDe: %0.3f\r\n",
 				speedPIDoutput[0], 
 				pitchPIDoutput[0], 
