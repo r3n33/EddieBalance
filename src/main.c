@@ -13,7 +13,6 @@
 //TODO: Allow for multiple Eddies on the same network
 //TODO: If not connected to WiFi start a hotspot for ones self
 //TODO: Add command line arguments for switching console/udp output... maybe camera etc..
-//TODO: Add encoder support for speed PID controller
 
 #include "imu/imu.h"
 #include "motordriver/MotorDriver.h"
@@ -25,33 +24,22 @@
 #include "pid.h"
 #include <stdarg.h> //print function
 #include "Kalman.h"
-
+#include "encoder.h"
 #include "udp.h"
 
 #include <sys/time.h>
 
-long long last_gy_ms;
-long long last_PID_ms;
-
-long long current_milliseconds() 
+double last_gy_ms;
+double last_PID_ms;
+double current_milliseconds() 
 {
     struct timeval c_time; 
     gettimeofday(&c_time, NULL);
-    long long milliseconds = c_time.tv_sec*1000LL + c_time.tv_usec/1000;
+    double milliseconds = c_time.tv_sec*1000 + c_time.tv_usec/1000;
     return milliseconds;
 }
 
 //#define DISABLE_MOTORS
-
-#define DEFAULT_TRIM -3.0f //Eddie's balance point
-
-#define DEFAULT_FWD_TRIM -1.25f //Trim used to drive forwards by changing angular setpoint
-#define DEFAULT_REV_TRIM 1.25f //Trim used to drive backwards by changing angular setpoint
-#define DEFAULT_TRN_TRIM 20.0f //Default trim for turning expressed in motor speed %
-
-#define MOTION_COMPENSATE_RATE 0.25 //Maximum degrees per iteration
-
-#define DRIVE_TRIM_BLEED_RATE 0.8 //Degrees per iteration
 
 enum
 {
@@ -62,41 +50,22 @@ int outputto = UDP; //Change to fit current need.
 
 int Running = 1;
 int inFalloverState = 0; //Used to flag when Eddie has fallen over and disables motors
+int inRunAwayState = 0;
 int inSteadyState = 0; //Used to flag how long Eddie is being held upright in a stead state and will enable motors
 
-PID_t pitchPID; //PID Controller for pitch angle
-float pitchPIDoutput = 0;
+PID_t pitchPID[2]; //PID Controllers for pitch angle
+float pitchPIDoutput[2] = {0};
 float pidP_P_GAIN,pidP_I_GAIN,pidP_D_GAIN,pidP_I_LIMIT,pidP_EMA_SAMPLES;
 
-PID_t speedPID; //PID Controller for wheel speed
-float speedPIDoutput = 0;
+PID_t speedPID[2]; //PID Controllers for wheel speed
+float speedPIDoutput[2] = {0};
 float pidS_P_GAIN,pidS_I_GAIN,pidS_D_GAIN,pidS_I_LIMIT,pidS_EMA_SAMPLES;
-
-float kalmanAngle;
-
-enum 
-{
-	DRIVE_IDLE = 0,
-	DRIVE_FORWARD,
-	DRIVE_REVERSE
-};
-int currentDriveMode = DRIVE_IDLE;
-
-enum
-{
-	TURN_IDLE = 0,
-	TURN_RIGHT,
-	TURN_LEFT
-};
-int currentTurnMode = TURN_IDLE;
 
 float filteredPitch;
 float filteredRoll;
-float currentTrim = DEFAULT_TRIM;
-float driveForwardTrim = DEFAULT_FWD_TRIM;
-float driveReverseTrim = DEFAULT_REV_TRIM;
-float driveRightTrim = DEFAULT_TRN_TRIM;
-float driveLeftTrim = -DEFAULT_TRN_TRIM;
+
+float driveTrim = 0;
+float turnTrim = 0;
 
 int print(const char *format, ...)
 {
@@ -128,21 +97,13 @@ int print(const char *format, ...)
 void signal_callback_handler(int signum)
 {
 	print("Exiting program; Caught signal %d\r\n",signum);
-
 	Running = 0;
 }
 
 /* Current UDP Commands:
  *
- * IDLE 	= No forward or reverse, just balance.
- * FORWARD 	= Drive forwards; 	FORWARD2.5 = Drive forwards at 2.5 degree angle.
- * REVERSE 	= Drive backwards; 	REVERSE3.5 = Drive reverse at 3.5 degree angle.
- * RIGHT 	= Turn right; 		RIGHT25.0 = Turn right at 25% speed.
- * LEFT 	= Turn left; 		LEFT22.0 = Turn left at 22% speed.
- * STRAIGHT = Cancel turning.
- *
- * TRIM+ = Trim forwards at 0.1 degree increment.
- * TRIM- = Trim backwards at 0.1 degree increment.
+ * DRIVE[value]	=	+ is Forwards, - is Reverse, 0.0 is IDLE
+ * TURN[value]	=	+ is Right, - is Left, 0.0 is STRAIGHT
  *
  * SETPIDS = Changes all PIDs for speed and pitch controllers
  * GETPIDS = Returns all PIDs for speed and pitch controllers via UDP
@@ -152,78 +113,22 @@ void signal_callback_handler(int signum)
  * KALQ[value] = adjust Kalman Q Bias
  * KALR[value] = adjust Kalman R Measure
  *
+ * STOPUDP	= Will stop Eddie from sending UDP to current recipient
+ *
  */
 void UDP_Data_Handler( char * p_udpin )
 {
-	if( !memcmp( p_udpin, "TRIM+", 5 ) )
+	/* DRIVE commands */
+	if( !memcmp( p_udpin, "DRIVE", 5 ) )
 	{
-		currentTrim -= 0.1;
-		print( "Trim forwards command received and set to: %0.2f\r\n", currentTrim );
+		driveTrim = atof( &p_udpin[5] );
 	}
-	else if( !memcmp( p_udpin, "TRIM-", 5 ) )
+	/* TURN commands */
+	else if( !memcmp( p_udpin, "TURN", 4 ) )
 	{
-		currentTrim += 0.1;
-		print( "Trim backwards command received and set to: %0.2f\r\n", currentTrim );
+		turnTrim = atof( &p_udpin[4] );
 	}
-	else if( !memcmp( p_udpin, "IDLE", 4 ) )
-	{
-		currentDriveMode = DRIVE_IDLE;
-		print( "Drive Mode: IDLE command received\r\n" );
-	}
-	else if( !memcmp( p_udpin, "FORWARD", 7 ) )
-	{
-		float driveSpeed = atof( &p_udpin[7] );
-		if ( driveSpeed ) driveForwardTrim = -driveSpeed;
-		currentDriveMode = DRIVE_FORWARD;
-		print( "Drive Mode: FORWARD command at %0.2f deg angle\r\n", driveForwardTrim );
-	}
-	else if( !memcmp( p_udpin, "REVERSE", 7 ) )
-	{
-		float driveSpeed = atof( &p_udpin[7] );
-		if ( driveSpeed ) driveReverseTrim = driveSpeed;
-		currentDriveMode = DRIVE_REVERSE;
-		print( "Drive Mode: REVERSE command at %0.2f deg angle\r\n", driveReverseTrim );
-	}
-	else if( !memcmp( p_udpin, "RIGHT", 5 ) )
-	{
-		float driveSpeed = atof( &p_udpin[5] );
-		if ( driveSpeed ) driveRightTrim = driveSpeed;
-		currentTurnMode = TURN_RIGHT;
-		print( "Turn Mode: RIGHT command at %0.2f speed received\r\n", driveRightTrim );
-	}
-	else if( !memcmp( p_udpin, "LEFT", 4 ) )
-	{
-		float driveSpeed = atof( &p_udpin[4] );
-		if ( driveSpeed ) driveLeftTrim = -driveSpeed;
-		currentTurnMode = TURN_LEFT;
-		print( "Turn Mode: LEFT command at %0.2f speed received\r\n", driveRightTrim );
-	}
-	else if( !memcmp( p_udpin, "STRAIGHT", 8 ) )
-	{
-		currentTurnMode = TURN_IDLE;
-		print( "Turn Mode: SRAIGHT command received\r\n" );
-	}
-	else if ( strncmp( p_udpin, "PPIDP", 5 ) == 0 )
-	{
-		float newGain = 0;
-		newGain = atof( &p_udpin[5] );
-		print( "New Pitch PID P Gain Received: Changing %0.3f to %0.3f\r\n", pidP_P_GAIN, newGain );
-		pidP_P_GAIN = newGain;
-	}
-	else if ( strncmp( p_udpin, "PPIDI", 5 ) == 0 )
-	{
-		float newGain = 0;
-		newGain = atof( &p_udpin[5] );
-		print( "New Pitch PID I Gain Received: Changing %0.3f to %0.3f\r\n", pidP_I_GAIN, newGain );
-		pidP_I_GAIN = newGain;
-	}
-	else if ( strncmp( p_udpin, "PPIDD", 5 ) == 0 )
-	{
-		float newGain = 0;
-		newGain = atof( &p_udpin[5] );
-		print( "New Pitch PID D Gain Received: Changing %0.3f to %0.3f\r\n", pidP_D_GAIN, newGain );
-		pidP_D_GAIN = newGain;
-	}
+	/* Get/Set all PID quick commands*/
 	else if ( strncmp( p_udpin, "SETPIDS:", 8 ) == 0 )
 	{
 		char * pch;
@@ -250,8 +155,29 @@ void UDP_Data_Handler( char * p_udpin )
 	{
 		print( "CURRENTPIDS:%0.3f,%0.3f,%0.3f,%0.3f,%0.3f,%0.3f\r\n", pidP_P_GAIN, pidP_I_GAIN, pidP_D_GAIN, pidS_P_GAIN, pidS_I_GAIN, pidS_D_GAIN );
 	}
-	
-	
+	/* Individual Pitch PID Controller commands */
+	else if ( strncmp( p_udpin, "PPIDP", 5 ) == 0 )
+	{
+		float newGain = 0;
+		newGain = atof( &p_udpin[5] );
+		print( "New Pitch PID P Gain Received: Changing %0.3f to %0.3f\r\n", pidP_P_GAIN, newGain );
+		pidP_P_GAIN = newGain;
+	}
+	else if ( strncmp( p_udpin, "PPIDI", 5 ) == 0 )
+	{
+		float newGain = 0;
+		newGain = atof( &p_udpin[5] );
+		print( "New Pitch PID I Gain Received: Changing %0.3f to %0.3f\r\n", pidP_I_GAIN, newGain );
+		pidP_I_GAIN = newGain;
+	}
+	else if ( strncmp( p_udpin, "PPIDD", 5 ) == 0 )
+	{
+		float newGain = 0;
+		newGain = atof( &p_udpin[5] );
+		print( "New Pitch PID D Gain Received: Changing %0.3f to %0.3f\r\n", pidP_D_GAIN, newGain );
+		pidP_D_GAIN = newGain;
+	}
+	/* Individual Speed PID Controller commands*/
 	else if ( strncmp( p_udpin, "SPIDP", 5 ) == 0 )
 	{
 		float newGain = 0;
@@ -273,10 +199,7 @@ void UDP_Data_Handler( char * p_udpin )
 		print( "New Speed PID D Gain Received: Changing %0.3f to %0.3f\r\n", pidS_D_GAIN, newGain );
 		pidS_D_GAIN = newGain;
 	}
-	else if ( strncmp( p_udpin, "STOPUDP", 7 ) == 0 )
-	{
-		bsock=-1;
-	}
+	/* Pitch Kalman filter tuning commands */
 	else if ( strncmp( p_udpin, "KALQA", 4 ) == 0 )
 	{
 		float newGain = 0;
@@ -297,26 +220,11 @@ void UDP_Data_Handler( char * p_udpin )
 		newGain = atof( &p_udpin[4] );
 		print( "Setting Kalman R Measure to: %0.4f\r\n", newGain );
 		setRmeasure( newGain );
-	}	
-}
-
-void motion_comp( float p_speed, float * p_trim, float p_threshold, float p_maxAngle, float p_maxRate )
-{
-	float fabsSpeed = fabs(p_speed);
-	if ( fabsSpeed >  100.0 ) fabsSpeed =  100.0;
-	int sign = p_speed < 0 ? -1 : 1;
-	float compensationLimit = (p_maxAngle / 100.0) * fabsSpeed;
-	float compensationRate = (p_maxRate / 100.0) * fabsSpeed;
-	
-	if ( fabsSpeed < p_threshold )
-	{
-		if ( *p_trim > 0 ) *p_trim -= p_maxRate/2;
-		else if ( *p_trim < 0 ) *p_trim += p_maxRate/2;
 	}
-	else if ( fabs(*p_trim) < compensationLimit && currentDriveMode == DRIVE_IDLE )
+	/* UDP Hangup command */
+	else if ( strncmp( p_udpin, "STOPUDP", 7 ) == 0 )
 	{
-		printf( "Speed %0.2f Limit %0.2f Rate %0.2f Trim %0.2f \t DFtrim: %0.2f DRtrim: %0.2f\r\n", fabsSpeed, compensationLimit, compensationRate, *p_trim, driveForwardTrim, driveReverseTrim );
-		*p_trim += sign * compensationRate;
+		bsock=-1;
 	}
 }
 
@@ -330,9 +238,15 @@ int main(int argc, char **argv)
 	
 	print("Eddie starting...\r\n");
 
+	double EncoderPos[2] = {0};
+	
+	initEncoders( 183, 46, 45, 44 );
+	print("Encoders activated.\r\n");
+
 	imuinit();
 	print("IMU Started.\r\n");
 
+	float kalmanAngle;
 	InitKalman();
 	
 #ifndef DISABLE_MOTORS
@@ -350,13 +264,15 @@ int main(int argc, char **argv)
 	pthread_create( &udplistenerThread, NULL, &udplistener_Thread, NULL );
 	
 	print( "Eddie is Starting PID controller\r\n" );
-	/*Set default PID values and init pitchPID controller*/
-	pidP_P_GAIN = PIDP_P_GAIN;	pidP_I_GAIN = PIDP_I_GAIN;	pidP_D_GAIN = PIDP_D_GAIN;	pidP_I_LIMIT = PID_I_LIMIT; pidP_EMA_SAMPLES = PIDP_EMA_SAMPLES;
-	PIDinit( &pitchPID, &pidP_P_GAIN, &pidP_I_GAIN, &pidP_D_GAIN, &pidP_I_LIMIT, &pidP_EMA_SAMPLES );
+	/*Set default PID values and init pitchPID controllers*/
+	pidP_P_GAIN = PIDP_P_GAIN;	pidP_I_GAIN = PIDP_I_GAIN;	pidP_D_GAIN = PIDP_D_GAIN;	pidP_I_LIMIT = PIDP_I_LIMIT; pidP_EMA_SAMPLES = PIDP_EMA_SAMPLES;
+	PIDinit( &pitchPID[0], &pidP_P_GAIN, &pidP_I_GAIN, &pidP_D_GAIN, &pidP_I_LIMIT, &pidP_EMA_SAMPLES );
+	PIDinit( &pitchPID[1], &pidP_P_GAIN, &pidP_I_GAIN, &pidP_D_GAIN, &pidP_I_LIMIT, &pidP_EMA_SAMPLES );
 	
-//Set default values and init speedPID controller
-pidS_P_GAIN = PIDS_P_GAIN;	pidS_I_GAIN = PIDS_I_GAIN;	pidS_D_GAIN = PIDS_D_GAIN;	pidS_I_LIMIT = PID_I_LIMIT; pidS_EMA_SAMPLES = PIDS_EMA_SAMPLES;
-PIDinit( &speedPID, &pidS_P_GAIN, &pidS_I_GAIN, &pidS_D_GAIN, &pidS_I_LIMIT, &pidS_EMA_SAMPLES );
+	/*Set default values and init speedPID controllers*/
+	pidS_P_GAIN = PIDS_P_GAIN;	pidS_I_GAIN = PIDS_I_GAIN;	pidS_D_GAIN = PIDS_D_GAIN;	pidS_I_LIMIT = PIDS_I_LIMIT; pidS_EMA_SAMPLES = PIDS_EMA_SAMPLES;
+	PIDinit( &speedPID[0], &pidS_P_GAIN, &pidS_I_GAIN, &pidS_D_GAIN, &pidS_I_LIMIT, &pidS_EMA_SAMPLES );
+	PIDinit( &speedPID[1], &pidS_P_GAIN, &pidS_I_GAIN, &pidS_D_GAIN, &pidS_I_LIMIT, &pidS_EMA_SAMPLES );
 	
 	//Get estimate of starting angle and specify complementary filter and kalman filter start angles
 	getOrientation();
@@ -364,20 +280,25 @@ PIDinit( &speedPID, &pidS_P_GAIN, &pidS_I_GAIN, &pidS_D_GAIN, &pidS_I_LIMIT, &pi
 	setkalmanangle( filteredPitch );
 	filteredRoll = i2cRoll;
 	
-float testMotionTrim=0;
-float testDriveTrim = 0;
-
 	print( "Eddie startup complete. Hold me upright to begin\r\n" );
 	
-float gy_scale = 0.01;
-last_PID_ms = last_gy_ms = current_milliseconds();
+	double gy_scale = 0.01;
+	last_PID_ms = last_gy_ms = current_milliseconds();
 
-//setQkalmanangle( 0.001 );
-//setQbias( 0.001 );
-//setRmeasure( 0.03 );
-
+	double test_smoothDriveTrim=0;
+	int blnWasTurning;
+	
 	while(Running)
 	{
+		GetEncoders( EncoderPos );
+		
+		if( fabs(GetEncoder()) > 1000 && !inRunAwayState )
+		{
+			print( "Help! I'm running and not moving.\r\n");
+			ResetEncoders();
+			inRunAwayState=1;
+		}
+		
 		/*Read IMU and calculate rough angle estimates*/
 		getOrientation();
 		
@@ -387,14 +308,14 @@ last_PID_ms = last_gy_ms = current_milliseconds();
 		last_gy_ms = current_milliseconds();
 		
 		/*Complementary filters to smooth rough pitch and roll estimates*/
-		filteredPitch = 0.998 * ( filteredPitch + ( gy * gy_scale ) ) + ( 0.002 * i2cPitch );
+		filteredPitch = 0.98 * ( filteredPitch + ( gy * gy_scale ) ) + ( 0.02 * i2cPitch );
 		filteredRoll = 0.98 * ( filteredRoll + ( gx * gy_scale ) ) + ( 0.02 * i2cRoll );
 		
 		/*Kalman filter for most accurate pitch estimates*/	
 		kalmanAngle = -getkalmanangle(filteredPitch, gy, gy_scale /*dt*/);
 		
 		/* Monitor angles to determine if Eddie has fallen too far... or if Eddie has been returned upright*/
-		if ( ( fabs( kalmanAngle ) > 30 || fabs( filteredRoll ) > 45 ) && !inFalloverState )
+		if ( ( inRunAwayState || ( fabs( kalmanAngle ) > 50 || fabs( filteredRoll ) > 45 ) ) && !inFalloverState ) 
 		{
 #ifndef DISABLE_MOTORS
 			motor_driver_standby(1);
@@ -406,6 +327,7 @@ last_PID_ms = last_gy_ms = current_milliseconds();
 		{
 			if ( ++inSteadyState == 100 )
 			{
+				inRunAwayState = 0;
 				inSteadyState = 0;
 #ifndef DISABLE_MOTORS
 				motor_driver_standby(0);
@@ -418,93 +340,79 @@ last_PID_ms = last_gy_ms = current_milliseconds();
 		{
 			inSteadyState = 0;
 		}
-		
+
 		if ( !inFalloverState )
 		{
-			/* Testing adjusting setpoint when motor speeds exceed threshold
-			 * Working quite nicely as motion compensation
-			 * Now made into a function with adjustable parameters.
-			 * If you are PID tuning for balance I would recommend commenting this function.
-			 */
-			motion_comp( pitchPIDoutput, &testMotionTrim, 22.0 /*threshold*/, 10.0 /*max angle*/, MOTION_COMPENSATE_RATE );	 
-			
-			/* Testing drive operations */
-			switch( currentDriveMode )
+			/* Drive operations */
+			test_smoothDriveTrim = ( 0.99 * test_smoothDriveTrim ) + ( 0.01 * driveTrim );
+			if( test_smoothDriveTrim != 0 ) 
 			{
-				case DRIVE_FORWARD:
-					testDriveTrim = driveForwardTrim + testMotionTrim;
-				break;
-				case DRIVE_REVERSE:
-					testDriveTrim = driveReverseTrim + testMotionTrim;
-				break;
-				case DRIVE_IDLE: default: //Bleed off drive trim to match motion compensation trim
-					if ( testDriveTrim < testMotionTrim ) 
-					{
-						if ( testDriveTrim + DRIVE_TRIM_BLEED_RATE < 0 ) testDriveTrim += DRIVE_TRIM_BLEED_RATE;
-						else testDriveTrim = 0;
-					}
-					else if ( testDriveTrim > testMotionTrim )
-					{
-						if ( testDriveTrim - DRIVE_TRIM_BLEED_RATE > 0 ) testDriveTrim -= DRIVE_TRIM_BLEED_RATE;
-						else testDriveTrim = 0;
-					}
-				break;
+				EncoderAddPos(test_smoothDriveTrim); //Alter encoder position to generate movement
 			}
 			
-			//Use pitchPID to determine motor speeds needed to hold angle
-			pitchPIDoutput = PIDUpdate( currentTrim+testDriveTrim, kalmanAngle, current_milliseconds() - last_PID_ms, &pitchPID);
+			/* Turn operations */
+			if( turnTrim != 0  )
+			{
+				EncoderAddPos2( turnTrim, -turnTrim ); //Alter encoder positions to turn
+				blnWasTurning=1;
+			}
+			else if( blnWasTurning )
+			{
+				blnWasTurning=0;
+				CenterEncoders();
+			}
+						
+			double timenow = current_milliseconds() ;
 			
-			last_PID_ms = current_milliseconds();
+			speedPIDoutput[0] = PIDUpdate( 0, EncoderPos[0], timenow - last_PID_ms, &speedPID[0] );//Wheel Speed PIDs
+			speedPIDoutput[1] = PIDUpdate( 0, EncoderPos[1], timenow - last_PID_ms, &speedPID[1] );//Wheel Speed PIDs
+			pitchPIDoutput[0] = PIDUpdate( speedPIDoutput[0], kalmanAngle, timenow - last_PID_ms, &pitchPID[0] );//Pitch Angle PIDs		
+			pitchPIDoutput[1] = PIDUpdate( speedPIDoutput[1], kalmanAngle, timenow - last_PID_ms, &pitchPID[1] );//Pitch Angle PIDs
 			
-			//Limit pitchPID output to 100% motor throttle
-			if ( pitchPIDoutput > 100.0 ) pitchPIDoutput = 100.0;
-			if ( pitchPIDoutput < -100.0 ) pitchPIDoutput = -100.0;
+			last_PID_ms = timenow;
+			
+			//Limit PID output to +/-100 to match 100% motor throttle
+			if ( pitchPIDoutput[0] > 100.0 )  pitchPIDoutput[0] = 100.0;
+			if ( pitchPIDoutput[1] > 100.0 )  pitchPIDoutput[1] = 100.0;
+			if ( pitchPIDoutput[0] < -100.0 ) pitchPIDoutput[0] = -100.0;
+			if ( pitchPIDoutput[1] < -100.0 ) pitchPIDoutput[1] = -100.0;
+
 		}
-		else //We are inFalloverState and the PID i term should remain 0
+		else //We are inFalloverState
 		{
-			pitchPID.accumulatedError = 0;
-			speedPID.accumulatedError = 0;
-		}
-		
-		/* Testing: Apply turn operations */	
-		float testTurnTrim;
-		switch( currentTurnMode )
-		{
-			case TURN_RIGHT:
-				testTurnTrim = driveRightTrim;
-			break;
-			case TURN_LEFT:
-				testTurnTrim = driveLeftTrim;
-			break;
-			default:
-				testTurnTrim = 0;
-			break;				
+			ResetEncoders();
+			pitchPID[0].accumulatedError = 0;
+			pitchPID[1].accumulatedError = 0;
+			speedPID[0].accumulatedError = 0;
+			speedPID[1].accumulatedError = 0;
 		}
 	
 #ifndef DISABLE_MOTORS
-		set_motor_speed_right( pitchPIDoutput - testTurnTrim );
-		set_motor_speed_left( pitchPIDoutput + testTurnTrim );
+		set_motor_speed_right( pitchPIDoutput[0] );
+		set_motor_speed_left( pitchPIDoutput[1] );
 #endif
 
 		if ( !inFalloverState || outputto == UDP )
 		{
 			print( "PIDout: %0.2f,%0.2f\tcompPitch: %6.2f kalPitch: %6.2f\tPe: %0.3f\tIe: %0.3f\tDe: %0.3f\tPe: %0.3f\tIe: %0.3f\tDe: %0.3f\r\n",
-				speedPIDoutput, 
-				pitchPIDoutput, 
+				speedPIDoutput[0], 
+				pitchPIDoutput[0], 
 				filteredPitch, 
 				kalmanAngle,
-				pitchPID.error, 
-				pitchPID.accumulatedError, 
-				pitchPID.differentialError, 
-				speedPID.error, 
-				speedPID.accumulatedError, 
-				speedPID.differentialError 
+				pitchPID[0].error, 
+				pitchPID[0].accumulatedError, 
+				pitchPID[0].differentialError, 
+				speedPID[0].error, 
+				speedPID[0].accumulatedError, 
+				speedPID[0].differentialError 
 				);
 		}
 
 	} //--while(Running)
 	
 	print( "Eddie is cleaning up...\r\n" );
+	
+CloseEncoder();
 	
 	pthread_join(udplistenerThread, NULL);
 	print( "UDP Thread Joined..\r\n" );
