@@ -67,6 +67,7 @@ float filteredRoll;
 
 float driveTrim = 0;
 float turnTrim = 0;
+double smoothedDriveTrim=0;
 
 int print(const char *format, ...)
 {
@@ -294,9 +295,6 @@ int main(int argc, char **argv)
 	
 	double gy_scale = 0.01;
 	last_PID_ms = last_gy_ms = current_milliseconds();
-
-	double test_smoothDriveTrim=0;
-	int blnWasTurning;
 	
 	while(Running)
 	{
@@ -354,8 +352,8 @@ int main(int argc, char **argv)
 		if ( !inFalloverState )
 		{
 			/* Drive operations */
-			test_smoothDriveTrim = ( 0.99 * test_smoothDriveTrim ) + ( 0.01 * driveTrim );
-			if( test_smoothDriveTrim != 0 ) 
+			smoothedDriveTrim = ( 0.99 * test_smoothDriveTrim ) + ( 0.01 * driveTrim );
+			if( smoothedDriveTrim != 0 ) 
 			{
 				EncoderAddPos(test_smoothDriveTrim); //Alter encoder position to generate movement
 			}
@@ -364,12 +362,6 @@ int main(int argc, char **argv)
 			if( turnTrim != 0  )
 			{
 				EncoderAddPos2( turnTrim, -turnTrim ); //Alter encoder positions to turn
-				blnWasTurning=1;
-			}
-			else if( blnWasTurning )
-			{
-				blnWasTurning=0;
-				CenterEncoders();
 			}
 						
 			double timenow = current_milliseconds();

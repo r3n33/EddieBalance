@@ -145,12 +145,6 @@ void EncoderInterruptB( void * args )
 	lastpins[ 3 ] = currentpins[ 1 ];	
 }
 
-void CenterEncoders()
-{
-	double average = ( position[ 0 ] + position[ 1 ] ) / 2;
-	position[ 0 ] = position[ 1 ] = average;
-}
-
 void ResetEncoders()
 {
 	position[ 0 ] = position[ 1 ] = 0;
