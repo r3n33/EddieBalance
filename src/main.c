@@ -352,10 +352,10 @@ int main(int argc, char **argv)
 		if ( !inFalloverState )
 		{
 			/* Drive operations */
-			smoothedDriveTrim = ( 0.99 * test_smoothDriveTrim ) + ( 0.01 * driveTrim );
+			smoothedDriveTrim = ( 0.99 * smoothedDriveTrim ) + ( 0.01 * driveTrim );
 			if( smoothedDriveTrim != 0 ) 
 			{
-				EncoderAddPos(test_smoothDriveTrim); //Alter encoder position to generate movement
+				EncoderAddPos(smoothedDriveTrim); //Alter encoder position to generate movement
 			}
 			
 			/* Turn operations */
