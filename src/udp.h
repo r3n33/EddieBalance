@@ -77,6 +77,9 @@ void initListener( unsigned short udpListenPort, int * p_socket, struct sockaddr
 
 int udpMsgLen=0;
 int startup = 1;
+//255.255.255.255
+char lastRXAddress[16] = {0};
+
 int checkUDPReady( char * udpBuffer, int * p_socket )
 {
 	int bytesAv = 0;
@@ -86,13 +89,22 @@ int checkUDPReady( char * udpBuffer, int * p_socket )
 	{
 		struct sockaddr_in rx_from_addr;
 		socklen_t len = sizeof( rx_from_addr );
+		//Receive UDP data
 		udpMsgLen = recvfrom( *p_socket, udpBuffer, MAXMESSAGESIZE, 0, ( struct sockaddr * )&rx_from_addr, &len );
-		udpBuffer[ udpMsgLen ] = 0;
+		udpBuffer[ udpMsgLen ] = 0; //Null terminate UDP RX string
 		
-//If we received UDP data on control socket close the TX socket so a response can be sent to whomever we received from
-		if ( udpMsgLen && p_socket == &rx_control_socketfd ) UDPCloseTX();
+		char thisRXaddress[16] = {0};
+		sprintf( thisRXaddress, "%s", inet_ntoa( rx_from_addr.sin_addr ) );
+		//If this RX address does not match the last RX address.. Close the TX socket.
+		if( memcmp( lastRXAddress, thisRXaddress, sizeof(thisRXaddress) ) )
+		{
+			//DEBUG: printf( "Destination address changed from: %s to: %s\r\n", lastRXAddress, thisRXaddress );
+			UDPCloseTX();
+			bzero( lastRXAddress, sizeof( lastRXAddress ) );
+			memcpy( lastRXAddress, thisRXaddress, sizeof(thisRXaddress) );
+		}
 		
-//If the TX socket is closed init sending socket in case a response is to be sent		
+		//If the TX socket is closed init sending socket in case a response is to be sent		
 		if ( tx_socketfd < 0 ) initUDPSend( (char*)inet_ntoa( rx_from_addr.sin_addr ), UDP_RESPOND_PORT );
 		
 		return 1;

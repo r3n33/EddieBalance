@@ -25,6 +25,7 @@
 #include "Kalman.h"
 #include "encoder.h"
 #include "udp.h"
+#include "identity.h"
 
 #include <sys/time.h>
 
@@ -107,7 +108,7 @@ void UDP_Control_Handler( char * p_udpin )
 	
 	if ( !memcmp( p_udpin, "DISCOVER", 8 ) )
 	{
-		print( "EddiePlusRobotHere" );
+		print( "EddiePlusRobotHere[%04x]", thisEddieSerial );
 	}
 }
 
@@ -253,11 +254,13 @@ int main(int argc, char **argv)
 	//Register signal and signal handler
 	signal(SIGINT, signal_callback_handler);
 	
-	//Init UDP with callback and pointer to run status
+	//Init UDP with callbacks and pointer to run status
 	initUDP( &UDP_Command_Handler, &UDP_Control_Handler, &Running );
 	
 	print("Eddie starting...\r\n");
 
+initIdentity();
+	
 	double EncoderPos[2] = {0};
 	
 	initEncoders( 183, 46, 45, 44 );
