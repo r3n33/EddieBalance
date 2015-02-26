@@ -102,6 +102,11 @@ void signal_callback_handler(int signum)
 	Running = 0;
 }
 
+void UDP_Control_Handler( char * p_udpin )
+{
+	printf( "UDP Control Packet Received: %s\r\n", p_udpin );
+}
+
 /* Current UDP Commands:
  *
  * DRIVE[value]	=	+ is Forwards, - is Reverse, 0.0 is IDLE
@@ -118,7 +123,7 @@ void signal_callback_handler(int signum)
  * STOPUDP	= Will stop Eddie from sending UDP to current recipient
  *
  */
-void UDP_Data_Handler( char * p_udpin )
+void UDP_Command_Handler( char * p_udpin )
 {
 	/* DRIVE commands */
 	if( !memcmp( p_udpin, "DRIVE", 5 ) )
@@ -226,7 +231,7 @@ void UDP_Data_Handler( char * p_udpin )
 	/* UDP Hangup command */
 	else if ( strncmp( p_udpin, "STOPUDP", 7 ) == 0 )
 	{
-		bsock=-1;
+		UDPCloseTX();
 	}
 	
 	else if ( strncmp( p_udpin, "STREAM1", 7 ) == 0 )
@@ -245,7 +250,7 @@ int main(int argc, char **argv)
 	signal(SIGINT, signal_callback_handler);
 	
 	//Init UDP with callback and pointer to run status
-	initUDP( &UDP_Data_Handler, &Running );
+	initUDP( &UDP_Command_Handler, &UDP_Control_Handler, &Running );
 	
 	print("Eddie starting...\r\n");
 
