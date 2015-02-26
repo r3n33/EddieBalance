@@ -10,7 +10,6 @@
 */
 
 //TODO: Remove network reset at startup when Intel fixes the confirmed bug in GPIO
-//TODO: Allow for multiple Eddies on the same network
 //TODO: If not connected to WiFi start a hotspot for ones self
 //TODO: Add command line arguments for switching console/udp output... maybe camera etc..
 
@@ -104,7 +103,12 @@ void signal_callback_handler(int signum)
 
 void UDP_Control_Handler( char * p_udpin )
 {
-	printf( "UDP Control Packet Received: %s\r\n", p_udpin );
+	//DEBUG: printf( "UDP Control Packet Received: %s\r\n", p_udpin );
+	
+	if ( !memcmp( p_udpin, "DISCOVER", 8 ) )
+	{
+		print( "EddiePlusRobotHere" );
+	}
 }
 
 /* Current UDP Commands:
@@ -233,7 +237,7 @@ void UDP_Command_Handler( char * p_udpin )
 	{
 		UDPCloseTX();
 	}
-	
+	/* Enable/Disable live data stream */
 	else if ( strncmp( p_udpin, "STREAM1", 7 ) == 0 )
 	{
 		StreamData = 1;

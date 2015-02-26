@@ -12,8 +12,9 @@
 
 #define MAXMESSAGESIZE 64
 
-#define UDP_COMMAND_PORT 4242 //UDP Port for receiving commands; responses will be sent to PORT + 1
+#define UDP_COMMAND_PORT 4242 //UDP Port for receiving commands
 #define UDP_CONTROL_PORT 4240 //UDP Port for receive control data
+#define UDP_RESPOND_PORT 4243 //UDP Port for returning data to user
 
 int * isRunning;
 
@@ -35,6 +36,8 @@ pthread_t udplistenerThread;
 
 void (*commandFunctionPtr)(char *);
 void (*controlFunctionPtr)(char *);
+
+void UDPCloseTX();
 
 void initUDP( void * p_cmdFuncPtr, void * p_ctrlFuncPtr, int * p_running )
 {
@@ -77,7 +80,8 @@ int startup = 1;
 int checkUDPReady( char * udpBuffer, int * p_socket )
 {
 	int bytesAv = 0;
-		
+	
+	/* If there is data to be read on the socket bring it in and capture the source IP */
 	if( ioctl( *p_socket, FIONREAD, &bytesAv ) > 0 || bytesAv > 0 )
 	{
 		struct sockaddr_in rx_from_addr;
@@ -85,7 +89,11 @@ int checkUDPReady( char * udpBuffer, int * p_socket )
 		udpMsgLen = recvfrom( *p_socket, udpBuffer, MAXMESSAGESIZE, 0, ( struct sockaddr * )&rx_from_addr, &len );
 		udpBuffer[ udpMsgLen ] = 0;
 		
-		if ( tx_socketfd < 0 ) initUDPSend( (char*)inet_ntoa( rx_from_addr.sin_addr ), UDP_COMMAND_PORT + 1 );
+//If we received UDP data on control socket close the TX socket so a response can be sent to whomever we received from
+		if ( udpMsgLen && p_socket == &rx_control_socketfd ) UDPCloseTX();
+		
+//If the TX socket is closed init sending socket in case a response is to be sent		
+		if ( tx_socketfd < 0 ) initUDPSend( (char*)inet_ntoa( rx_from_addr.sin_addr ), UDP_RESPOND_PORT );
 		
 		return 1;
 	}
@@ -95,6 +103,7 @@ int checkUDPReady( char * udpBuffer, int * p_socket )
 
 void UDPCloseTX()
 {
+	close( tx_socketfd );
 	tx_socketfd = -1;
 }
 
