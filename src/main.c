@@ -9,25 +9,24 @@
  the GPL2 ("Copyleft").
 */
 
-//TODO: Remove network reset at startup when Intel fixes the confirmed bug in GPIO
-//TODO: If not connected to WiFi start a hotspot for ones self
-//TODO: Add command line arguments for switching console/udp output... maybe camera etc..
-
-#include "imu/imu.h"
-#include "motordriver/MotorDriver.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
 #include <math.h>
-#include "mraa.h"
-#include "pid.h"
 #include <stdarg.h> //print function
-#include "Kalman.h"
-#include "encoder.h"
-#include "udp.h"
-#include "identity.h"
-
 #include <sys/time.h>
+
+#include "mraa.h"
+
+#include "encoder.h"
+#include "identity.h"
+#include "imu/imu.h"
+#include "Kalman.h"
+#include "motordriver/MotorDriver.h"
+#include "pid.h"
+#include "udp.h"
+
+//#define DISABLE_MOTORS
 
 static double last_gy_ms;
 static double last_PID_ms;
@@ -38,8 +37,6 @@ double current_milliseconds()
     double milliseconds = c_time.tv_sec*1000 + c_time.tv_usec/1000;
     return milliseconds;
 }
-
-//#define DISABLE_MOTORS
 
 enum
 {
@@ -69,6 +66,9 @@ float driveTrim = 0;
 float turnTrim = 0;
 double smoothedDriveTrim=0;
 
+/* print() function used to handle data output
+ * Current implementation will check output mode and direct data accordingly
+ */
 int print(const char *format, ...)
 {
 	static char buffer[2048];
@@ -102,6 +102,7 @@ void signal_callback_handler(int signum)
 	Running = 0;
 }
 
+/* Incoming UDP Control Packet handler */
 void UDP_Control_Handler( char * p_udpin )
 {
 	//DEBUG: printf( "UDP Control Packet Received: %s\r\n", p_udpin );
@@ -112,7 +113,7 @@ void UDP_Control_Handler( char * p_udpin )
 	}
 }
 
-/* Current UDP Commands:
+/* Incoming UDP Command Packet handler:
  *
  * DRIVE[value]	=	+ is Forwards, - is Reverse, 0.0 is IDLE
  * TURN[value]	=	+ is Right, - is Left, 0.0 is STRAIGHT
@@ -121,11 +122,15 @@ void UDP_Control_Handler( char * p_udpin )
  * GETPIDS = Returns all PIDs for speed and pitch controllers via UDP
  *
  * PIDP[P,I,D][value] = adjust pitch PIDs
- * PISS[P,I,D][value] = adjust speed PIDs
- * KALQ[value] = adjust Kalman Q Bias
+ * SPID[P,I,D][value] = adjust speed PIDs
+ *
+ * KALQA[value] = adjust Kalman Q Angle
+ * KALQB[value] = adjust Kalman Q Bias
  * KALR[value] = adjust Kalman R Measure
  *
  * STOPUDP	= Will stop Eddie from sending UDP to current recipient
+ *
+ * STREAM[0,1] = Enable/Disable Live Data Stream
  *
  */
 void UDP_Command_Handler( char * p_udpin )
@@ -286,7 +291,7 @@ initIdentity();
 	print("Eddie is starting the UDP network thread..\r\n");
 	pthread_create( &udplistenerThread, NULL, &udplistener_Thread, NULL );
 	
-	print( "Eddie is Starting PID controller\r\n" );
+	print( "Eddie is Starting PID controllers\r\n" );
 	/*Set default PID values and init pitchPID controllers*/
 	pidP_P_GAIN = PIDP_P_GAIN;	pidP_I_GAIN = PIDP_I_GAIN;	pidP_D_GAIN = PIDP_D_GAIN;	pidP_I_LIMIT = PIDP_I_LIMIT; pidP_EMA_SAMPLES = PIDP_EMA_SAMPLES;
 	PIDinit( &pitchPID[0], &pidP_P_GAIN, &pidP_I_GAIN, &pidP_D_GAIN, &pidP_I_LIMIT, &pidP_EMA_SAMPLES );

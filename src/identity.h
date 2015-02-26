@@ -14,7 +14,7 @@ void initIdentity()
 	FILE * pipe = popen( "ls /dev/disk/by-uuid\n", "r" );
 	if (pipe == NULL ) 
 	{
-		printf("Eddie::Identity::initIdentity: Invoking command failed.\r\n");
+		printf("Eddie::initIdentity: Invoking command failed.\r\n");
 	}
 	while( fgets( responseBuff + strlen(responseBuff), sizeof(responseBuff) - strlen(responseBuff), pipe ) != NULL );
 	pclose( pipe );
