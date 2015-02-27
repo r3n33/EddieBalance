@@ -9,11 +9,11 @@
  the GPL2 ("Copyleft").
 */
 
+#include <math.h>
+#include <signal.h>
+#include <stdarg.h> //print function
 #include <stdio.h>
 #include <stdlib.h>
-#include <signal.h>
-#include <math.h>
-#include <stdarg.h> //print function
 #include <sys/time.h>
 
 #include "mraa.h"
@@ -109,7 +109,12 @@ void UDP_Control_Handler( char * p_udpin )
 	
 	if ( !memcmp( p_udpin, "DISCOVER", 8 ) )
 	{
-		print( "EddiePlusRobotHere[%04x]", thisEddieSerial );
+		print( thisEddieName );
+	}
+	else if ( strncmp( p_udpin, "SETNAME", 7 ) == 0 )
+	{
+		setName( &p_udpin[7] );
+		print( "My name is: %s", thisEddieName );
 	}
 }
 
@@ -431,7 +436,7 @@ initIdentity();
 	
 	print( "Eddie is cleaning up...\r\n" );
 	
-CloseEncoder();
+	CloseEncoder();
 	
 	pthread_join(udplistenerThread, NULL);
 	print( "UDP Thread Joined..\r\n" );
