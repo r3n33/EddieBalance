@@ -88,7 +88,7 @@ int print(const char *format, ...)
 			printf("%s",buffer);
 		break;
 		case UDP:
-			UDPSend(buffer,len);
+			UDPBindSend(buffer,len);
 		break;
 	}
 
@@ -107,15 +107,24 @@ void UDP_Control_Handler( char * p_udpin )
 {
 	//DEBUG: printf( "UDP Control Packet Received: %s\r\n", p_udpin );
 	
+	char response[128] = {0};
+	
 	if ( !memcmp( p_udpin, "DISCOVER", 8 ) )
 	{
-		print( thisEddieName );
+		sprintf( response, "DISCOVER: %s", thisEddieName );
 	}
 	else if ( strncmp( p_udpin, "SETNAME", 7 ) == 0 )
 	{
 		setName( &p_udpin[7] );
-		print( "My name is: %s", thisEddieName );
+		sprintf( response, "SETNAME: %s", thisEddieName );
 	}
+	else if ( !memcmp( p_udpin, "BIND", 4 ) )
+	{
+		setCommandBindAddress();
+		sprintf( response, "BIND: OK" );
+	}
+	
+	UDPCtrlSend( response );
 }
 
 /* Incoming UDP Command Packet handler:
@@ -322,7 +331,7 @@ initIdentity();
 	{
 		GetEncoders( EncoderPos );
 		
-		if( fabs(GetEncoder()) > 1000 && !inRunAwayState )
+		if( fabs(GetEncoder()) > 2000 && !inRunAwayState )
 		{
 			print( "Help! I'm running and not moving.\r\n");
 			ResetEncoders();

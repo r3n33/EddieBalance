@@ -7,18 +7,15 @@
 #ifndef PID_H_
 #define PID_H_
 
-
-
-
 //Speed PID Configuration
-#define PIDS_P_GAIN 0.02f
-#define PIDS_I_GAIN 1600.0f
-#define PIDS_D_GAIN 320.0f
+#define PIDS_P_GAIN 0.028f
+#define PIDS_I_GAIN 1800.0f
+#define PIDS_D_GAIN 240.0f
 #define PIDS_EMA_SAMPLES 10.0f
-#define PIDS_I_LIMIT  275.0 //Ilimit is before process gain
+#define PIDS_I_LIMIT  450.0 //Ilimit is before process gain
 
 //Pitch PID Configuration
-#define PIDP_P_GAIN 7.5f
+#define PIDP_P_GAIN 6.5f
 #define PIDP_I_GAIN 250.0f
 #define PIDP_D_GAIN 35.0f
 #define PIDP_EMA_SAMPLES 2.0f

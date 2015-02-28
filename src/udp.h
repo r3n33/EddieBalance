@@ -12,8 +12,8 @@
 
 #define MAXMESSAGESIZE 64
 
-#define UDP_COMMAND_PORT 4242 //UDP Port for receiving commands
-#define UDP_CONTROL_PORT 4240 //UDP Port for receive control data
+#define UDP_COMMAND_PORT 4242 //UDP Port for receiving command packets
+#define UDP_CONTROL_PORT 4240 //UDP Port for receiving control packets
 #define UDP_RESPOND_PORT 4243 //UDP Port for returning data to user
 
 int * isRunning;
@@ -24,13 +24,15 @@ void udp_signal_handler(int signum)
 	(*isRunning) = 0;
 }
 
-int tx_socketfd = -1; //Socket file descriptor used to send data from Eddie
-int rx_command_socketfd; //Socket file descriptor used to receive commands from user
-int rx_control_socketfd; //Socket file descriptor used to receive control data from user
+int tx_command_socketfd = -1; 	//Socket descriptor used to send data to bound client
+int tx_control_socketfd = -1; 	//Socket descriptor used to response to control packets
+int rx_command_socketfd; 		//Socket descriptor used to receive commands from user
+int rx_control_socketfd; 		//Socket descriptor used to receive control data from user
 
-struct sockaddr_in sendtoAddress;
-struct sockaddr_in rx_cmd_addr;
-struct sockaddr_in rx_ctrl_addr;
+struct sockaddr_in tx_cmd_addrin;
+struct sockaddr_in tx_ctrl_addrin;
+struct sockaddr_in rx_cmd_addrin;
+struct sockaddr_in rx_ctrl_addrin;
 
 pthread_t udplistenerThread;
 
@@ -38,6 +40,8 @@ void (*commandFunctionPtr)(char *);
 void (*controlFunctionPtr)(char *);
 
 void UDPCloseTX();
+void UDPCloseCtrlTX();
+void initUDPCmdSend( char * sendtoIP, unsigned short sendtoPort );
 
 void initUDP( void * p_cmdFuncPtr, void * p_ctrlFuncPtr, int * p_running )
 {
@@ -46,23 +50,51 @@ void initUDP( void * p_cmdFuncPtr, void * p_ctrlFuncPtr, int * p_running )
 	isRunning = p_running;
 }
 
-void initUDPSend(char *sendtoIP, unsigned short sendtoPort)
+char lastRXAddress[16] = {0}; //The last address a UDP message was received from
+char commandBindAddress[16] = {0}; //This is the address we are bound to receive commands from
+int isBoundToClient = 0;
+
+void setCommandBindAddress()
 {
-	/* NOTE: To broadcast UDP you must:
-	//int broadcastPermission = 0;	// Set socket to allow broadcast 
-	//setsockopt( tx_socketfd, SOL_SOCKET, SO_BROADCAST, (void *) &broadcastPermission, sizeof( broadcastPermission ) );
-	*/
-	tx_socketfd = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);	// Create socket for sending/receiving 
-	memset( &sendtoAddress, 0, sizeof( sendtoAddress ) );	// Zero out structure 
-	sendtoAddress.sin_family = AF_INET;						// Internet address family 
-	sendtoAddress.sin_addr.s_addr = inet_addr( sendtoIP );	// Destination IP address 
-	sendtoAddress.sin_port = htons(sendtoPort);				// Destination port 
+	memcpy( commandBindAddress, lastRXAddress, sizeof(commandBindAddress) );
+	
+	initUDPCmdSend( commandBindAddress, UDP_RESPOND_PORT );
+
+	isBoundToClient = 1;
 }
 
-void UDPSend(char * data, int len)
+void initUDPCtrlSend( char * sendtoIP, unsigned short sendtoPort )
 {
-	if(tx_socketfd>=0)
-		sendto( tx_socketfd, data, len, 0, ( struct sockaddr * )&sendtoAddress, sizeof( sendtoAddress ) );
+	tx_control_socketfd = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);	// Create socket for sending 
+	memset( &tx_ctrl_addrin, 0, sizeof( tx_ctrl_addrin ) );			// Zero out structure 
+	tx_ctrl_addrin.sin_family = AF_INET;							// Internet address family 
+	tx_ctrl_addrin.sin_addr.s_addr = inet_addr( sendtoIP );			// Destination IP address 
+	tx_ctrl_addrin.sin_port = htons(sendtoPort);					// Destination port 
+}
+
+void initUDPCmdSend( char * sendtoIP, unsigned short sendtoPort )
+{
+	tx_command_socketfd = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);	// Create socket for sending 
+	memset( &tx_cmd_addrin, 0, sizeof( tx_cmd_addrin ) );			// Zero out structure 
+	tx_cmd_addrin.sin_family = AF_INET;								// Internet address family 
+	tx_cmd_addrin.sin_addr.s_addr = inet_addr( sendtoIP );			// Destination IP address 
+	tx_cmd_addrin.sin_port = htons(sendtoPort);						// Destination port 
+}
+
+void UDPBindSend( char * data, int len )
+{
+	if ( tx_command_socketfd>=0 && isBoundToClient )
+	{
+		sendto( tx_command_socketfd, data, len, 0, ( struct sockaddr * )&tx_cmd_addrin, sizeof( tx_cmd_addrin ) );
+	}
+}
+
+void UDPCtrlSend( char * data )
+{
+	if(tx_control_socketfd>=0)
+	{
+		sendto( tx_control_socketfd, data, strlen(data), 0, ( struct sockaddr * )&tx_ctrl_addrin, sizeof( tx_ctrl_addrin ) );
+	}
 }
 
 void initListener( unsigned short udpListenPort, int * p_socket, struct sockaddr_in * p_addr )
@@ -75,37 +107,34 @@ void initListener( unsigned short udpListenPort, int * p_socket, struct sockaddr
 	bind( *p_socket, (struct sockaddr *)p_addr, sizeof( *p_addr ) );
 }
 
-int udpMsgLen=0;
-int startup = 1;
-//255.255.255.255
-char lastRXAddress[16] = {0};
-
 int checkUDPReady( char * udpBuffer, int * p_socket )
 {
 	int bytesAv = 0;
-	
+
 	/* If there is data to be read on the socket bring it in and capture the source IP */
 	if( ioctl( *p_socket, FIONREAD, &bytesAv ) > 0 || bytesAv > 0 )
 	{
+		int udpMsgLen = 0;
 		struct sockaddr_in rx_from_addr;
 		socklen_t len = sizeof( rx_from_addr );
 		//Receive UDP data
 		udpMsgLen = recvfrom( *p_socket, udpBuffer, MAXMESSAGESIZE, 0, ( struct sockaddr * )&rx_from_addr, &len );
 		udpBuffer[ udpMsgLen ] = 0; //Null terminate UDP RX string
 		
+		//Get address from this received packet
 		char thisRXaddress[16] = {0};
 		sprintf( thisRXaddress, "%s", inet_ntoa( rx_from_addr.sin_addr ) );
-		//If this RX address does not match the last RX address.. Close the TX socket.
-		if( memcmp( lastRXAddress, thisRXaddress, sizeof(thisRXaddress) ) )
+		
+		//If this RX address does not match the last RX address for a control packet.. Close the TX socket.
+		if ( p_socket == &rx_control_socketfd && memcmp( lastRXAddress, thisRXaddress, sizeof(thisRXaddress) ) )
 		{
-			//DEBUG: printf( "Destination address changed from: %s to: %s\r\n", lastRXAddress, thisRXaddress );
-			UDPCloseTX();
+			UDPCloseCtrlTX();
 			bzero( lastRXAddress, sizeof( lastRXAddress ) );
 			memcpy( lastRXAddress, thisRXaddress, sizeof(thisRXaddress) );
+			
+			//If the TX socket is closed init sending socket in case a response is to be sent		
+			if ( tx_control_socketfd < 0 ) initUDPCtrlSend( (char*)inet_ntoa( rx_from_addr.sin_addr ), UDP_RESPOND_PORT );
 		}
-		
-		//If the TX socket is closed init sending socket in case a response is to be sent		
-		if ( tx_socketfd < 0 ) initUDPSend( (char*)inet_ntoa( rx_from_addr.sin_addr ), UDP_RESPOND_PORT );
 		
 		return 1;
 	}
@@ -115,8 +144,13 @@ int checkUDPReady( char * udpBuffer, int * p_socket )
 
 void UDPCloseTX()
 {
-	close( tx_socketfd );
-	tx_socketfd = -1;
+	close( tx_command_socketfd );
+	tx_command_socketfd = -1;
+}
+void UDPCloseCtrlTX()
+{
+	close( tx_control_socketfd );
+	tx_control_socketfd = -1;
 }
 
 void* udplistener_Thread( void * arg )
@@ -126,8 +160,8 @@ void* udplistener_Thread( void * arg )
 	signal( SIGTERM, udp_signal_handler );
 	prctl(PR_SET_NAME,"updlistener",0,0,0);
 
-	initListener( UDP_COMMAND_PORT, &rx_command_socketfd, &rx_cmd_addr );
-	initListener( UDP_CONTROL_PORT, &rx_control_socketfd, &rx_ctrl_addr );
+	initListener( UDP_COMMAND_PORT, &rx_command_socketfd, &rx_cmd_addrin );
+	initListener( UDP_CONTROL_PORT, &rx_control_socketfd, &rx_ctrl_addrin );
 	
 	char incomingUDP[ MAXMESSAGESIZE + 1 ];
 
@@ -145,7 +179,10 @@ void* udplistener_Thread( void * arg )
 		/* Check for UDP data on Command port */
 		while( checkUDPReady( incomingUDP, &rx_command_socketfd ) )
 		{
-			(*commandFunctionPtr)(incomingUDP);
+			if ( isBoundToClient && !memcmp( lastRXAddress, commandBindAddress, sizeof( lastRXAddress ) ) )
+			{
+				(*commandFunctionPtr)(incomingUDP);
+			}
 			bzero( incomingUDP, sizeof( incomingUDP ) );
 		}
 	}
