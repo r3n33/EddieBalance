@@ -16,7 +16,7 @@ int initName()
 	int pipe = open( "/home/root/EddieBalance/src/settingsTest", O_RDONLY );
 	if (pipe == -1 ) 
 	{
-		printf("Eddie::initName: Open file for reading failed.\r\n");
+		//DEBUG: printf("Eddie::initName: Open file for reading failed.\r\n");
 		return 0;
 	}
 	if ( read( pipe, thisEddieName, sizeof(thisEddieName) ) )
@@ -32,7 +32,7 @@ void setName( char * p_name )
 	int pipe = open( "/home/root/EddieBalance/src/settingsTest", O_WRONLY | O_CREAT );
 	if (pipe == -1 ) 
 	{
-		printf("Eddie::setName: Open file for writing failed.\r\n");
+		//DEBUG: printf("Eddie::setName: Open file for writing failed.\r\n");
 		return;
 	}
 	if ( write( pipe, p_name, sizeof(thisEddieName) ) )
