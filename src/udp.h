@@ -56,8 +56,10 @@ int isBoundToClient = 0;
 
 void setCommandBindAddress()
 {
-	memcpy( commandBindAddress, lastRXAddress, sizeof(commandBindAddress) );
+	//Set the bind address to the last address received from
+	strcpy( commandBindAddress, lastRXAddress );
 	
+	//Init the TX command socket with the new bind address
 	initUDPCmdSend( commandBindAddress, UDP_RESPOND_PORT );
 
 	isBoundToClient = 1;
@@ -125,16 +127,15 @@ int checkUDPReady( char * udpBuffer, int * p_socket )
 		char thisRXaddress[16] = {0};
 		sprintf( thisRXaddress, "%s", inet_ntoa( rx_from_addr.sin_addr ) );
 		
-		//If this RX address does not match the last RX address for a control packet.. Close the TX socket.
-		if ( p_socket == &rx_control_socketfd && memcmp( lastRXAddress, thisRXaddress, sizeof(thisRXaddress) ) )
+		//If this RX address does not match the last RX address && is a control packet... 
+		if ( p_socket == &rx_control_socketfd && memcmp( lastRXAddress, thisRXaddress, sizeof(lastRXAddress) ) )
 		{
-			UDPCloseCtrlTX();
-			bzero( lastRXAddress, sizeof( lastRXAddress ) );
-			memcpy( lastRXAddress, thisRXaddress, sizeof(thisRXaddress) );
-			
-			//If the TX socket is closed init sending socket in case a response is to be sent		
-			if ( tx_control_socketfd < 0 ) initUDPCtrlSend( (char*)inet_ntoa( rx_from_addr.sin_addr ), UDP_RESPOND_PORT );
+			UDPCloseCtrlTX(); //...close the control TX socket
+			initUDPCtrlSend( thisRXaddress, UDP_RESPOND_PORT ); //and re-open with the address we need to respond to
 		}
+		
+		//Store the last RX address
+		strcpy( lastRXAddress, thisRXaddress );
 		
 		return 1;
 	}
