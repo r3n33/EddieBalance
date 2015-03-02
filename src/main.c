@@ -347,7 +347,7 @@ initIdentity();
 		last_gy_ms = current_milliseconds();
 		
 		/*Complementary filters to smooth rough pitch and roll estimates*/
-		filteredPitch = 0.98 * ( filteredPitch + ( gy * gy_scale ) ) + ( 0.02 * i2cPitch );
+		filteredPitch = 0.995 * ( filteredPitch + ( gy * gy_scale ) ) + ( 0.005 * i2cPitch );
 		filteredRoll = 0.98 * ( filteredRoll + ( gx * gy_scale ) ) + ( 0.02 * i2cRoll );
 
 		/*Kalman filter for most accurate pitch estimates*/	
