@@ -418,6 +418,8 @@ initIdentity();
 			pitchPID[1].accumulatedError = 0;
 			speedPID[0].accumulatedError = 0;
 			speedPID[1].accumulatedError = 0;
+			driveTrim = 0;
+			turnTrim = 0;
 		}
 	
 #ifndef DISABLE_MOTORS
