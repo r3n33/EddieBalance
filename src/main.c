@@ -9,25 +9,24 @@
  the GPL2 ("Copyleft").
 */
 
-//TODO: Remove network reset at startup when Intel fixes the confirmed bug in GPIO
-//TODO: Allow for multiple Eddies on the same network
-//TODO: If not connected to WiFi start a hotspot for ones self
-//TODO: Add command line arguments for switching console/udp output... maybe camera etc..
-
-#include "imu/imu.h"
-#include "motordriver/MotorDriver.h"
+#include <math.h>
+#include <signal.h>
+#include <stdarg.h> //print function
 #include <stdio.h>
 #include <stdlib.h>
-#include <signal.h>
-#include <math.h>
+#include <sys/time.h>
+
 #include "mraa.h"
-#include "pid.h"
-#include <stdarg.h> //print function
-#include "Kalman.h"
+
 #include "encoder.h"
+#include "identity.h"
+#include "imu/imu.h"
+#include "Kalman.h"
+#include "motordriver/MotorDriver.h"
+#include "pid.h"
 #include "udp.h"
 
-#include <sys/time.h>
+//#define DISABLE_MOTORS
 
 static double last_gy_ms;
 static double last_PID_ms;
@@ -38,8 +37,6 @@ double current_milliseconds()
     double milliseconds = c_time.tv_sec*1000 + c_time.tv_usec/1000;
     return milliseconds;
 }
-
-//#define DISABLE_MOTORS
 
 enum
 {
@@ -69,6 +66,9 @@ float driveTrim = 0;
 float turnTrim = 0;
 double smoothedDriveTrim=0;
 
+/* print() function used to handle data output
+ * Current implementation will check output mode and direct data accordingly
+ */
 int print(const char *format, ...)
 {
 	static char buffer[2048];
@@ -88,7 +88,7 @@ int print(const char *format, ...)
 			printf("%s",buffer);
 		break;
 		case UDP:
-			UDPSend(buffer,len);
+			UDPBindSend(buffer,len);
 		break;
 	}
 
@@ -102,7 +102,32 @@ void signal_callback_handler(int signum)
 	Running = 0;
 }
 
-/* Current UDP Commands:
+/* Incoming UDP Control Packet handler */
+void UDP_Control_Handler( char * p_udpin )
+{
+	//DEBUG: printf( "UDP Control Packet Received: %s\r\n", p_udpin );
+	
+	char response[128] = {0};
+	
+	if ( !memcmp( p_udpin, "DISCOVER", 8 ) )
+	{
+		sprintf( response, "DISCOVER: %s", thisEddieName );
+	}
+	else if ( strncmp( p_udpin, "SETNAME", 7 ) == 0 )
+	{
+		setName( &p_udpin[7] );
+		sprintf( response, "SETNAME: %s", thisEddieName );
+	}
+	else if ( !memcmp( p_udpin, "BIND", 4 ) )
+	{
+		setCommandBindAddress();
+		sprintf( response, "BIND: OK" );
+	}
+	
+	UDPCtrlSend( response );
+}
+
+/* Incoming UDP Command Packet handler:
  *
  * DRIVE[value]	=	+ is Forwards, - is Reverse, 0.0 is IDLE
  * TURN[value]	=	+ is Right, - is Left, 0.0 is STRAIGHT
@@ -111,14 +136,18 @@ void signal_callback_handler(int signum)
  * GETPIDS = Returns all PIDs for speed and pitch controllers via UDP
  *
  * PIDP[P,I,D][value] = adjust pitch PIDs
- * PISS[P,I,D][value] = adjust speed PIDs
- * KALQ[value] = adjust Kalman Q Bias
+ * SPID[P,I,D][value] = adjust speed PIDs
+ *
+ * KALQA[value] = adjust Kalman Q Angle
+ * KALQB[value] = adjust Kalman Q Bias
  * KALR[value] = adjust Kalman R Measure
  *
  * STOPUDP	= Will stop Eddie from sending UDP to current recipient
  *
+ * STREAM[0,1] = Enable/Disable Live Data Stream
+ *
  */
-void UDP_Data_Handler( char * p_udpin )
+void UDP_Command_Handler( char * p_udpin )
 {
 	/* DRIVE commands */
 	if( !memcmp( p_udpin, "DRIVE", 5 ) )
@@ -226,9 +255,9 @@ void UDP_Data_Handler( char * p_udpin )
 	/* UDP Hangup command */
 	else if ( strncmp( p_udpin, "STOPUDP", 7 ) == 0 )
 	{
-		bsock=-1;
+		UDPCloseTX();
 	}
-	
+	/* Enable/Disable live data stream */
 	else if ( strncmp( p_udpin, "STREAM1", 7 ) == 0 )
 	{
 		StreamData = 1;
@@ -244,11 +273,13 @@ int main(int argc, char **argv)
 	//Register signal and signal handler
 	signal(SIGINT, signal_callback_handler);
 	
-	//Init UDP with callback and pointer to run status
-	initUDP( &UDP_Data_Handler, &Running );
+	//Init UDP with callbacks and pointer to run status
+	initUDP( &UDP_Command_Handler, &UDP_Control_Handler, &Running );
 	
 	print("Eddie starting...\r\n");
 
+initIdentity();
+	
 	double EncoderPos[2] = {0};
 	
 	initEncoders( 183, 46, 45, 44 );
@@ -274,7 +305,7 @@ int main(int argc, char **argv)
 	print("Eddie is starting the UDP network thread..\r\n");
 	pthread_create( &udplistenerThread, NULL, &udplistener_Thread, NULL );
 	
-	print( "Eddie is Starting PID controller\r\n" );
+	print( "Eddie is Starting PID controllers\r\n" );
 	/*Set default PID values and init pitchPID controllers*/
 	pidP_P_GAIN = PIDP_P_GAIN;	pidP_I_GAIN = PIDP_I_GAIN;	pidP_D_GAIN = PIDP_D_GAIN;	pidP_I_LIMIT = PIDP_I_LIMIT; pidP_EMA_SAMPLES = PIDP_EMA_SAMPLES;
 	PIDinit( &pitchPID[0], &pidP_P_GAIN, &pidP_I_GAIN, &pidP_D_GAIN, &pidP_I_LIMIT, &pidP_EMA_SAMPLES );
@@ -300,7 +331,7 @@ int main(int argc, char **argv)
 	{
 		GetEncoders( EncoderPos );
 		
-		if( fabs(GetEncoder()) > 1000 && !inRunAwayState )
+		if( fabs(GetEncoder()) > 2000 && !inRunAwayState )
 		{
 			print( "Help! I'm running and not moving.\r\n");
 			ResetEncoders();
@@ -316,7 +347,7 @@ int main(int argc, char **argv)
 		last_gy_ms = current_milliseconds();
 		
 		/*Complementary filters to smooth rough pitch and roll estimates*/
-		filteredPitch = 0.98 * ( filteredPitch + ( gy * gy_scale ) ) + ( 0.02 * i2cPitch );
+		filteredPitch = 0.995 * ( filteredPitch + ( gy * gy_scale ) ) + ( 0.005 * i2cPitch );
 		filteredRoll = 0.98 * ( filteredRoll + ( gx * gy_scale ) ) + ( 0.02 * i2cRoll );
 
 		/*Kalman filter for most accurate pitch estimates*/	
@@ -387,6 +418,8 @@ int main(int argc, char **argv)
 			pitchPID[1].accumulatedError = 0;
 			speedPID[0].accumulatedError = 0;
 			speedPID[1].accumulatedError = 0;
+			driveTrim = 0;
+			turnTrim = 0;
 		}
 	
 #ifndef DISABLE_MOTORS
@@ -414,7 +447,7 @@ int main(int argc, char **argv)
 	
 	print( "Eddie is cleaning up...\r\n" );
 	
-CloseEncoder();
+	CloseEncoder();
 	
 	pthread_join(udplistenerThread, NULL);
 	print( "UDP Thread Joined..\r\n" );
