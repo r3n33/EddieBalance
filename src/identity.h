@@ -13,7 +13,7 @@ unsigned short checksum( const char * key, int len );
 int initName()
 {
 	char responseBuff[64] = {0};
-	int pipe = open( "/home/root/EddieBalance/src/settingsTest", O_RDONLY );
+	int pipe = open( "/etc/EddieBalance.conf", O_RDONLY );
 	if (pipe == -1 ) 
 	{
 		//DEBUG: printf("Eddie::initName: Open file for reading failed.\r\n");
@@ -29,7 +29,7 @@ int initName()
 
 void setName( char * p_name )
 {
-	int pipe = open( "/home/root/EddieBalance/src/settingsTest", O_WRONLY | O_CREAT );
+	int pipe = open( "/etc/EddieBalance.conf", O_WRONLY | O_CREAT );
 	if (pipe == -1 ) 
 	{
 		//DEBUG: printf("Eddie::setName: Open file for writing failed.\r\n");
