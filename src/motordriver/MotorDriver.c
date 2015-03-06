@@ -5,6 +5,9 @@
 
 #include <fcntl.h>
 
+#include <stdlib.h>
+#include <unistd.h>
+
 int pwm0, pwm1, ain1, ain2, bin1, bin2;
 
 //Datasheet spec is 100kHz Maximum PWM switching frequency

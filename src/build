@@ -1,2 +1,2 @@
-gcc main.c pid.c imu/imu.c motordriver/MotorDriver.c -o EddieBalance -lmraa -lm -lpthread
+gcc main.c pid.c imu/imu.c motordriver/MotorDriver.c -o EddieBalance -lmraa -lm -lpthread -Wall
 

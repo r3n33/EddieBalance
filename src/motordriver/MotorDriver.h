@@ -25,6 +25,7 @@
 
 int motor_driver_enable();
 void motor_driver_disable();
+void motor_driver_standby( char p_option );
 
 void set_motor_direction_left ( char p_direction );
 void set_motor_direction_right( char p_direction );

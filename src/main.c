@@ -18,6 +18,7 @@
 
 #include "mraa.h"
 
+#include "bluetooth.h"
 #include "encoder.h"
 #include "identity.h"
 #include "imu/imu.h"
@@ -273,6 +274,11 @@ int main(int argc, char **argv)
 	//Register signal and signal handler
 	signal(SIGINT, signal_callback_handler);
 	
+	
+BluetoothInit();
+
+
+
 	//Init UDP with callbacks and pointer to run status
 	initUDP( &UDP_Command_Handler, &UDP_Control_Handler, &Running );
 	

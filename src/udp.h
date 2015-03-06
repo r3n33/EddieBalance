@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/prctl.h>
+#include <arpa/inet.h>
 
 #define MAXMESSAGESIZE 64
 

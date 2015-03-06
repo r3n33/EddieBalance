@@ -12,7 +12,6 @@ unsigned short checksum( const char * key, int len );
 
 int initName()
 {
-	char responseBuff[64] = {0};
 	int pipe = open( "/etc/EddieBalance.conf", O_RDONLY );
 	if (pipe == -1 ) 
 	{
