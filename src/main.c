@@ -275,8 +275,11 @@ int main(int argc, char **argv)
 	signal(SIGINT, signal_callback_handler);
 	
 	
-BluetoothInit();
+BluetoothInit( &Running );
 
+BluetoothManageService();
+
+return 0;
 
 
 	//Init UDP with callbacks and pointer to run status
@@ -284,7 +287,7 @@ BluetoothInit();
 	
 	print("Eddie starting...\r\n");
 
-initIdentity();
+	initIdentity();
 	
 	double EncoderPos[2] = {0};
 	
