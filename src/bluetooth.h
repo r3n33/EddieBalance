@@ -9,18 +9,29 @@
 #include <stdio.h>
 #include <strings.h>
 
-/* This works once with BlueZ 2.25 but when the application closes a kernel panic happens when wifi is received */
-/* The kernel panic has been avoided with a few cruddy commands but only once and the connection could not be re-established */
+#include <sys/ioctl.h>
 
-/* Edison is setup with:
- * Bluez 5 removed and replaced with:
- * http://bluez.sf.net/download/bluez-libs-2.25.tar.gz
- * http://bluez.sf.net/download/bluez-utils-2.25.tar.gz
- *
- * A properly configured (pin helper): /etc/bluetooth/hcid.conf
- */
+/*
+BlueZ5 working method for: 
+	advertising SerialPortProfile service, 
+	registering agent, 
+	accepting pair requests, 
+	connecting rfcomm, 
+	reading serial data over bluetooth
 
-//export PATH=$PATH:/opt/bluetooth/bin:/opt/bluetooth/sbin
+Edit /etc/systemd/system/bluetooth.service
+	Change ExecStart=/usr/lib/bluez5/bluetooth/bluetoothd --compat
+systemctl daemon-reload
+systemctl restart bluetooth
+...
+rfkill unblock bluetooth
+sdptool add --channel=3 SP
+...
+simple-agent-renee
+...
+rfcomm listen /dev/rfcomm0 3
+read /dev/rfcomm0 once connected
+*/
 
 int * isRunning;
 
@@ -29,16 +40,27 @@ void BluetoothInit( int * p_running )
 	isRunning = p_running;
 	
 	system( "rfkill unblock bluetooth" );
-	system( "hcid" );
-	system( "sdpd" );
 	system( "sdptool add --channel=3 SP" );
-	system( "hciconfig hci0 piscan" );
+	system( "/home/root/download/bluez-5.28/test/./simple-agent-renee &" );
 }
 
 int file_exist (char *filename)
 {
   struct stat   buffer;   
   return (stat (filename, &buffer) == 0);
+}
+
+int checkBTReady( int * p_fd )
+{
+	int bytesAv = 0;
+
+	/* If there is data to be read on the socket bring it in and capture the source IP */
+	if( ioctl( *p_fd, FIONREAD, &bytesAv ) > 0 || bytesAv > 0 )
+	{
+		return 1;
+	}
+	
+	return 0;
 }
 
 void BluetoothManageService()
@@ -51,7 +73,6 @@ void BluetoothManageService()
 		sleep(1);
 	}
 	
-	
 	int pipe = open( "/dev/rfcomm0", O_RDONLY );
 	if (pipe == -1 ) 
 	{
@@ -63,21 +84,15 @@ void BluetoothManageService()
 	char readBuffer[64] = {0};
 	while ( file_exist ("/dev/rfcomm0") && (*isRunning) )
 	{
-		if ( read( pipe, readBuffer, sizeof(readBuffer) ) )
+		if ( checkBTReady( &pipe ) )
 		{
+			read( pipe, readBuffer, sizeof(readBuffer) );
 			printf( "Eddie::BT: Read data: %s\r\n", readBuffer );
 			bzero( readBuffer, sizeof( readBuffer ) );
 		}
 		else usleep( 20000 );
 	}
 	
-	if ( 0 ) //Some combination.. likely the topmost command prevents kernel panic once
-	{
-		system( "bluetooth_rfkill_event &" );
-		system( "killall rfcomm" );
-		system( "rfkill block bluetooth" );
-		system("systemctl restart wpa_supplicant");
-	}
 	close( pipe );
 }
 
