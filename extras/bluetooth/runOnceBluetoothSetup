@@ -1,0 +1,11 @@
+rfkill unblock bluetooth
+sleep 3
+sdptool del 10001
+sdptool del 10002
+sdptool del 10003
+sdptool del 10004
+sdptool del 10005
+sdptool del 10006
+sdptool del 10007
+sdptool add --channel=1 SP
+hciconfig hci0 piscan

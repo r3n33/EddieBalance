@@ -11,8 +11,9 @@
 
 //left encoder: 183 46
 //right encoder: 45 44
-
+static volatile int lastforced;
 static volatile double position[ 2 ];
+static volatile double lastposition[ 2 ];
 mraa_gpio_context encoderx[ 4 ];
 
 int lastpins[ 4 ];

@@ -29,6 +29,8 @@
 
 //#define DISABLE_MOTORS
 
+#define USE_BT_SERIAL
+
 static double last_gy_ms;
 static double last_PID_ms;
 double current_milliseconds() 
@@ -274,13 +276,11 @@ int main(int argc, char **argv)
 	//Register signal and signal handler
 	signal(SIGINT, signal_callback_handler);
 	
-	
-BluetoothInit( &Running );
+#ifdef USE_BT_SERIAL
+	BluetoothInit( &UDP_Command_Handler, &Running );
 
-BluetoothManageService();
-
-return 0;
-
+	pthread_create( &BTlistenerThread, NULL, &BTlistener_Thread, NULL );	
+#endif
 
 	//Init UDP with callbacks and pointer to run status
 	initUDP( &UDP_Command_Handler, &UDP_Control_Handler, &Running );
@@ -366,7 +366,9 @@ return 0;
 		if ( ( inRunAwayState || ( fabs( kalmanAngle ) > 50 || fabs( filteredRoll ) > 45 ) ) && !inFalloverState ) 
 		{
 #ifndef DISABLE_MOTORS
-			motor_driver_standby(1);
+			//motor_driver_standby(1);
+			set_motor_speed_right( 0 );
+			set_motor_speed_left( 0 );
 #endif
 			inFalloverState = 1;
 			print( "Help! I've fallen over and I can't get up =)\r\n");
@@ -378,9 +380,10 @@ return 0;
 				inRunAwayState = 0;
 				inSteadyState = 0;
 #ifndef DISABLE_MOTORS
-				motor_driver_standby(0);
+ 			motor_driver_standby(0);
 #endif
 				inFalloverState = 0;
+				ResetEncoders();
 				print( "Thank you!\r\n" );
 			}
 		}
@@ -388,6 +391,7 @@ return 0;
 		{
 			inSteadyState = 0;
 		}
+
 
 		if ( !inFalloverState )
 		{
@@ -419,10 +423,40 @@ return 0;
 			if ( pitchPIDoutput[0] < -100.0 ) pitchPIDoutput[0] = -100.0;
 			if ( pitchPIDoutput[1] < -100.0 ) pitchPIDoutput[1] = -100.0;
 
+#ifndef DISABLE_MOTORS
+		set_motor_speed_right( pitchPIDoutput[0] );
+		set_motor_speed_left( pitchPIDoutput[1] );
+#endif
+
 		}
 		else //We are inFalloverState
 		{
-			ResetEncoders();
+			/*
+			/////////////////////////////////////////////////////////////////////////////////PULLUP MODE
+			if( lastforced != 0 && lastposition[0] != position[0] )
+			{
+				lastforced=1;
+				set_motor_speed_right( position[1] - position[0] );
+				set_motor_speed_left(  0  );
+			}
+			else if( lastforced != 1 && lastposition[1]!=position[1])
+			{
+				lastforced=0;
+				set_motor_speed_right( 0 );
+				set_motor_speed_left(  position[0] - position[1]  );
+			}
+			else
+			{
+				lastforced=-1;
+			}
+			
+			lastposition[0]=position[0];
+			lastposition[1]=position[1];
+			////////////////////////////////////////////////////////////////////////////////////////////
+			*/
+			motor_driver_standby(1);
+			
+			
 			pitchPID[0].accumulatedError = 0;
 			pitchPID[1].accumulatedError = 0;
 			speedPID[0].accumulatedError = 0;
@@ -431,10 +465,6 @@ return 0;
 			turnTrim = 0;
 		}
 	
-#ifndef DISABLE_MOTORS
-		set_motor_speed_right( pitchPIDoutput[0] );
-		set_motor_speed_left( pitchPIDoutput[1] );
-#endif
 
 		if ( (!inFalloverState || outputto == UDP) && StreamData )
 		{			
@@ -457,6 +487,11 @@ return 0;
 	print( "Eddie is cleaning up...\r\n" );
 	
 	CloseEncoder();
+
+#ifdef USE_BT_SERIAL
+	pthread_join(BTlistenerThread, NULL);
+	print( "Bluetooth Thread Joined..\r\n" );
+#endif
 	
 	pthread_join(udplistenerThread, NULL);
 	print( "UDP Thread Joined..\r\n" );

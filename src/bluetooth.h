@@ -11,36 +11,42 @@
 
 #include <sys/ioctl.h>
 
-/*
-BlueZ5 working method for: 
-	advertising SerialPortProfile service, 
-	registering agent, 
-	accepting pair requests, 
-	connecting rfcomm, 
-	reading serial data over bluetooth
+#include <sys/prctl.h>
 
-Edit /etc/systemd/system/bluetooth.service
-	Change ExecStart=/usr/lib/bluez5/bluetooth/bluetoothd --compat
-systemctl daemon-reload
-systemctl restart bluetooth
-...
-rfkill unblock bluetooth
-sdptool add --channel=3 SP
-...
-simple-agent-renee
-...
-rfcomm listen /dev/rfcomm0 3
-read /dev/rfcomm0 once connected
+pthread_t BTlistenerThread;
+
+void (*commandFunctionPtr)(char *);
+
+/*
+BlueZ5 working method for SPP - Tested on Android, Linux, Windows:
+//Setup 
+	Edit /etc/systemd/system/bluetooth.service
+		Change ExecStart=/usr/lib/bluez5/bluetooth/bluetoothd --compat
+	systemctl daemon-reload
+	systemctl restart bluetooth
+//Start bluetooth and add Serial Port to Service Discovery Protocol
+	rfkill unblock bluetooth
+	sdptool add --channel=1 SP
+//Start agent to auto accept connections
+	simple-agent-renee
+//Once paired with agent we can accept connections via RFCOMM
+	rfcomm listen /dev/rfcomm0 1
+	read /dev/rfcomm0 once connected
 */
 
 int * isRunning;
-
-void BluetoothInit( int * p_running )
+// Define the exit signal handler
+void bluetooth_signal_handler(int signum)
 {
+	(*isRunning) = 0;
+}
+
+void BluetoothInit( void * p_cmdFuncPtr, int * p_running )
+{
+	commandFunctionPtr = p_cmdFuncPtr;
 	isRunning = p_running;
 	
-	system( "rfkill unblock bluetooth" );
-	system( "sdptool add --channel=3 SP" );
+	system( "/home/root/EddieBalance/extras/bluetooth/./runOnceBluetoothSetup" );
 	system( "/home/root/download/bluez-5.28/test/./simple-agent-renee &" );
 }
 
@@ -63,37 +69,51 @@ int checkBTReady( int * p_fd )
 	return 0;
 }
 
-void BluetoothManageService()
-{
-	system( "rfcomm listen /dev/rfcomm0 3 &" );
-	
-	while ( !file_exist ("/dev/rfcomm0") && (*isRunning) )
+void* BTlistener_Thread( void * arg )
+{  
+	signal( SIGINT, bluetooth_signal_handler );
+	signal( SIGHUP, bluetooth_signal_handler );
+	signal( SIGTERM, bluetooth_signal_handler );
+	prctl(PR_SET_NAME,"bluetoothlistener",0,0,0);
+
+	while( (*isRunning) )
 	{
+		printf( "Eddie::BT:: Starting RFCOMM to receive a new connection..\r\n" );
+		
+		system( "rfcomm listen /dev/rfcomm0 1 &" );
+	
 		printf( "Waiting for /dev/rfcomm0\r\n" );
-		sleep(1);
-	}
-	
-	int pipe = open( "/dev/rfcomm0", O_RDONLY );
-	if (pipe == -1 ) 
-	{
-		printf("Eddie::BT: Didn't open /dev/rfcomm0 =(\r\n");
-		return;
-	}
-	printf("Eddie::BT: Connected to /dev/rfcomm0 =)\r\n" );
-	
-	char readBuffer[64] = {0};
-	while ( file_exist ("/dev/rfcomm0") && (*isRunning) )
-	{
-		if ( checkBTReady( &pipe ) )
-		{
-			read( pipe, readBuffer, sizeof(readBuffer) );
-			printf( "Eddie::BT: Read data: %s\r\n", readBuffer );
-			bzero( readBuffer, sizeof( readBuffer ) );
+		while ( !file_exist ("/dev/rfcomm0") && (*isRunning) )
+		{	
+			sleep(1);
 		}
-		else usleep( 20000 );
+	
+		int pipe = open( "/dev/rfcomm0", O_RDONLY );
+		if (pipe == -1 ) 
+		{
+			printf("Eddie::BT: ERROR: Unable to open /dev/rfcomm0 =(\r\n");
+			return NULL;
+		}
+		printf("Eddie::BT: SUCCESS: Connected to /dev/rfcomm0 =)\r\n" );
+	
+		char readBuffer[64] = {0};
+		while ( file_exist ("/dev/rfcomm0") && (*isRunning) )
+		{
+			if ( checkBTReady( &pipe ) )
+			{
+				read( pipe, readBuffer, sizeof(readBuffer) );
+				printf( "Eddie::BT: Read data: %s\r\n", readBuffer );
+(*commandFunctionPtr)(readBuffer);
+				bzero( readBuffer, sizeof( readBuffer ) );
+			}
+			else usleep( 20000 );
+		}
+		close( pipe );
 	}
 	
-	close( pipe );
+system("killall simple-agent-renee");
+	
+	return NULL;
 }
 
 #endif //--BLUETOOTH_H
