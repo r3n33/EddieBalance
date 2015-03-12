@@ -1,0 +1,121 @@
+Poky (Yocto Project Reference Distro) 1.6.1 eddieplus ttyMFD2
+
+eddieplus login: root
+Password:
+root@eddieplus:~# cd EddieBalance/src/
+root@eddieplus:~/EddieBalance/src# ./build
+root@eddieplus:~/EddieBalance/src# ./EddieBalance
+Service Record deleted.
+Service Record deleted.
+Service Record deleted.
+Service Record deleted.
+Service Record deleted.
+Service Record deleted.
+Service Record not found.
+Serial Port service registered
+Eddie::BT:: Starting RFCOMM to receive a new connection..
+Waiting for /dev/rfcomm0...
+Waiting for connection on channel 1
+Agent registered
+Connection from 40:2C:F4:C9:43:AE to /dev/rfcomm0
+Press CTRL-C for hangup
+...I see /dev/rfcomm0 so I'm attempting to open
+Opening /dev/rfcomm0...
+...Opened /dev/rfcomm0 SUCCESS =)
+Eddie::BT: Read data: ass
+
+Eddie::BT: Read data:
+End while reading /dev/rfcomm fopen
+fStream was not NULL.. closing..
+Disconnected
+fStream close didn't crash me.
+cat: can't open '/dev/rfcomm0': No such device
+Waiting for /dev/rfcomm0...
+Waiting for connection on channel 1
+Connection from 40:2C:F4:C9:43:AE to /dev/rfcomm0
+Press CTRL-C for hangup
+...I see /dev/rfcomm0 so I'm attempting to open
+Opening /dev/rfcomm0...
+...Opened /dev/rfcomm0 SUCCESS =)
+Eddie::BT: Read data: ass blaster
+
+Eddie::BT: Read data:
+End while reading /dev/rfcomm fopen
+Disconnected
+fStream was not NULL.. closing..
+fStream close didn't crash me.
+Waiting for connection on channel 1
+cat: can't open '/dev/rfcomm0': No such file or directory
+Waiting for /dev/rfcomm0...
+[  106.028978] BUG: unable to handle kernel paging request at ffffffe0
+[  106.029097] IP: [<c13157f9>] kmem_cache_alloc+0x89/0x1a0
+[  106.029187] *pdpt = 0000000001ccf001 *pde = 0000000001cd3067 *pte = 0000000000000000
+[  106.029296] Oops: 0000 [#1] PREEMPT SMP
+[  106.029365] Modules linked in: usb_f_acm u_serial g_multi libcomposite bcm_bt_lpm bcm4334x(O)
+[  106.029503] CPU: 0 PID: 357 Comm: EddieBalance Tainted: G        W  O 3.10.17-poky-edison+ #1
+[  106.029594] Hardware name: Intel Corporation Merrifield/BODEGA BAY, BIOS 466 2014.06.23:19.20.05
+[  106.029687] task: f5198000 ti: f57e6000 task.ti: f57e6000
+[  106.029753] EIP: 0060:[<c13157f9>] EFLAGS: 00010282 CPU: 0
+[  106.029820] EIP is at kmem_cache_alloc+0x89/0x1a0
+[  106.029879] EAX: 00000000 EBX: ffffffe0 ECX: 00006aaa EDX: 00006aa8
+[  106.029949] ESI: c1cc7220 EDI: f6c01b00 EBP: f57e7f04 ESP: f57e7edc
+[  106.030020]  DS: 007b ES: 007b FS: 00d8 GS: 0033 SS: 0068
+[  106.030083] CR0: 80050033 CR2: ffffffe0 CR3: 35485000 CR4: 001007f0
+[  106.030152] DR0: 00000000 DR1: 00000000 DR2: 00000000 DR3: 00000000
+[  106.030221] DR6: ffff0ff0 DR7: 00000400
+[  106.030267] Stack:
+[  106.030298]  f5198000 c1c09c44 f5198000 c1207bd5 f57e6000 000000d0 ffffffe0 f519fa60
+[  106.030444]  f5eef000 f519fff0 f57e7f1c c1207bd5 f5198000 f519fa60 f5198000 f5226000
+[  106.030587]  f57e7f54 c123cad5 00000000 00000001 00000001 f5226000 00000000 00000000
+[  106.030730] Call Trace:
+[  106.030790]  [<c1207bd5>] ? arch_dup_task_struct+0x55/0xf0
+[  106.030871]  [<c1207bd5>] arch_dup_task_struct+0x55/0xf0
+[  106.030951]  [<c123cad5>] copy_process.part.43+0xe5/0x1160
+[  106.031032]  [<c123dc19>] do_fork+0x99/0x360
+[  106.031103]  [<c14b5fb4>] ? copy_to_user+0x44/0x50
+[  106.031176]  [<c1252fd6>] ? SyS_rt_sigprocmask+0x76/0xa0
+[  106.031252]  [<c123dfa5>] SyS_clone+0x25/0x30
+[  106.031322]  [<c18a6df8>] syscall_call+0x7/0xb
+[  106.031393]  [<c18a0000>] ? ext4_mb_discard_group_preallocations+0xc8/0x2a3
+[  106.031469] Code: 00 e8 bc 46 59 00 8b 45 e8 8b 55 f0 8b 40 08 a8 08 0f 85 ab 00 00 00 8b 03 85 c0 89 45 f0 74 72 8b 47 14 8d 4a 02 8b 5d f0 8b 37 <8b> 1c 03 8b 45 f0 64 0f c7 0e 0f 94 c0 84 c0 74 a7 03 5f 14 0f
+[  106.032164] EIP: [<c13157f9>] kmem_cache_alloc+0x89/0x1a0 SS:ESP 0068:f57e7edc
+[  106.032262] CR2: 00000000ffffffe0
+[  106.032315] ---[ end trace 914c90516dc542b0 ]---
+[  106.032382] BUG: sleeping function called from invalid context at /data/jenkins_worker/workspace/edison-weekly/linux-kernel/kernel/rwsem.c:20
+[  106.032518] in_atomic(): 0, irqs_disabled(): 1, pid: 357, name: EddieBalance
+[  106.032606] CPU: 0 PID: 357 Comm: EddieBalance Tainted: G      D W  O 3.10.17-poky-edison+ #1
+[  106.032702] Hardware name: Intel Corporation Merrifield/BODEGA BAY, BIOS 466 2014.06.23:19.20.05
+[  106.032798]  00000165 00000165 f57e7cec c18a1334 f57e7d10 c1269ed3 c1a9a26c 00000000
+[  106.032950]  00000001 00000165 f5198300 f5dcfc28 f5198000 f57e7d1c c18a466c f5198000
+[  106.033100]  f57e7d30 c1252c4e 00000000 f57e7d30 00000009 f57e7d80 c1243088 00000009
+[  106.033250] Call Trace:
+[  106.033307]  [<c18a1334>] dump_stack+0x16/0x18
+[  106.033381]  [<c1269ed3>] __might_sleep+0xe3/0x110
+[  106.033456]  [<c18a466c>] down_read+0x1c/0x30
+[  106.033527]  [<c1252c4e>] exit_signals+0x1e/0x110
+[  106.033601]  [<c1243088>] do_exit+0x98/0x9f0
+[  106.033673]  [<c189cd69>] ? printk+0x3d/0x3f
+[  106.033743]  [<c124208b>] ? kmsg_dump+0xbb/0xd0
+[  106.033817]  [<c18a7abb>] oops_end+0x8b/0xc0
+[  106.033889]  [<c189c76b>] no_context+0x1b5/0x1bd
+[  106.033967]  [<c160e570>] ? i2c_unlock_adapter+0x20/0x40
+[  106.034047]  [<c189c8b1>] __bad_area_nosemaphore+0x13e/0x146
+[  106.034136]  [<c189c8d0>] bad_area_nosemaphore+0x17/0x19
+[  106.034216]  [<c18a97cb>] __do_page_fault+0xab/0x510
+[  106.034294]  [<c12ef779>] ? get_page_from_freelist+0x289/0x590
+[  106.034383]  [<c18a6786>] ? _raw_spin_unlock_irqrestore+0x26/0x50
+[  106.034475]  [<c18a9c30>] ? __do_page_fault+0x510/0x510
+[  106.034553]  [<c18a9c3d>] do_page_fault+0xd/0x10
+[  106.034624]  [<c18a733b>] error_code+0x5f/0x64
+[  106.034698]  [<c18a007b>] ? ext4_mb_discard_group_preallocations+0x143/0x2a3
+[  106.034793]  [<c18a9c30>] ? __do_page_fault+0x510/0x510
+[  106.034871]  [<c13157f9>] ? kmem_cache_alloc+0x89/0x1a0
+[  106.034951]  [<c1207bd5>] ? arch_dup_task_struct+0x55/0xf0
+[  106.035035]  [<c1207bd5>] arch_dup_task_struct+0x55/0xf0
+[  106.035116]  [<c123cad5>] copy_process.part.43+0xe5/0x1160
+[  106.035202]  [<c123dc19>] do_fork+0x99/0x360
+[  106.035274]  [<c14b5fb4>] ? copy_to_user+0x44/0x50
+[  106.035350]  [<c1252fd6>] ? SyS_rt_sigprocmask+0x76/0xa0
+[  106.035430]  [<c123dfa5>] SyS_clone+0x25/0x30
+[  106.035500]  [<c18a6df8>] syscall_call+0x7/0xb
+[  106.035574]  [<c18a0000>] ? ext4_mb_discard_group_preallocations+0xc8/0x2a3
