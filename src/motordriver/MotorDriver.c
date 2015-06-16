@@ -26,8 +26,6 @@ int motor_driver_enable()
 	system( "echo out > /sys/class/gpio/gpio14/direction" );
 	system( "echo out > /sys/class/gpio/gpio49/direction" );
 
-	system("systemctl restart wpa_supplicant"); //TODO: This is a temporary workaround to resolve wifi issue with GPIO 48
-
 	//Setup PWM0 (Left Motor)
 	system( "echo mode1 > /sys/kernel/debug/gpio_debug/gpio12/current_pinmux" );
 	system( "echo 0 > /sys/class/pwm/pwmchip0/export" );

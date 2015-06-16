@@ -278,7 +278,7 @@ int main(int argc, char **argv)
 	
 	print("Eddie starting...\r\n");
 
-initIdentity();
+	initIdentity();
 	
 	double EncoderPos[2] = {0};
 	
