@@ -128,7 +128,7 @@ int checkUDPReady( char * udpBuffer, int * p_socket )
 		sprintf( thisRXaddress, "%s", inet_ntoa( rx_from_addr.sin_addr ) );
 
 		//If this RX address does not match the last RX address && is a control packet...
-		if ( p_socket == &rx_control_socketfd && memcmp( lastRXAddress, thisRXaddress, sizeof(lastRXAddress) ) )
+		if ( p_socket == &rx_control_socketfd && memcmp( lastRXAddress, thisRXaddress, sizeof(lastRXAddress) ) != 0 )
 		{
 			UDPCloseCtrlTX(); //...close the control TX socket
 			initUDPCtrlSend( thisRXaddress, UDP_RESPOND_PORT ); //and re-open with the address we need to respond to
@@ -180,7 +180,7 @@ void* udplistener_Thread( void * arg )
 		/* Check for UDP data on Command port */
 		while( checkUDPReady( incomingUDP, &rx_command_socketfd ) )
 		{
-			if ( isBoundToClient && !memcmp( lastRXAddress, commandBindAddress, sizeof( lastRXAddress ) ) )
+			if ( isBoundToClient && memcmp( lastRXAddress, commandBindAddress, sizeof( lastRXAddress ) ) == 0 )
 			{
 				(*commandFunctionPtr)(incomingUDP);
 			}

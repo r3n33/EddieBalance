@@ -109,7 +109,7 @@ void UDP_Control_Handler( char * p_udpin )
 
 	char response[128] = {0};
 
-	if ( !memcmp( p_udpin, "DISCOVER", 8 ) )
+	if ( memcmp( p_udpin, "DISCOVER", 8 ) == 0 )
 	{
 		sprintf( response, "DISCOVER: %s", thisEddieName );
 	}
@@ -118,7 +118,7 @@ void UDP_Control_Handler( char * p_udpin )
 		setName( &p_udpin[7] );
 		sprintf( response, "SETNAME: %s", thisEddieName );
 	}
-	else if ( !memcmp( p_udpin, "BIND", 4 ) )
+	else if ( memcmp( p_udpin, "BIND", 4 ) == 0 )
 	{
 		setCommandBindAddress();
 		sprintf( response, "BIND: OK" );
@@ -150,12 +150,12 @@ void UDP_Control_Handler( char * p_udpin )
 void UDP_Command_Handler( char * p_udpin )
 {
 	/* DRIVE commands */
-	if( !memcmp( p_udpin, "DRIVE", 5 ) )
+	if( memcmp( p_udpin, "DRIVE", 5 ) == 0 )
 	{
 		driveTrim = atof( &p_udpin[5] );
 	}
 	/* TURN commands */
-	else if( !memcmp( p_udpin, "TURN", 4 ) )
+	else if( memcmp( p_udpin, "TURN", 4 ) == 0 )
 	{
 		turnTrim = atof( &p_udpin[4] );
 	}
